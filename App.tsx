@@ -65,6 +65,7 @@ const App: React.FC = () => {
       const rows = await sql`SELECT * FROM profiles WHERE id = ${identifier} OR slug = ${identifier}`;
       if (rows.length > 0) {
         const p = rows[0];
+        // Fix: Added faqs property to match BusinessProfile interface
         setPublicProfile({
           id: p.id,
           slug: p.slug || p.id,
@@ -77,6 +78,7 @@ const App: React.FC = () => {
           logo: p.logo,
           socialLinks: p.social_links || {},
           products: p.products || [],
+          faqs: p.faqs || [],
           currency: p.currency,
           returnPolicy: p.return_policy,
           deliveryPolicy: p.delivery_policy

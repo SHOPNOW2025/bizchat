@@ -11,6 +11,7 @@ export enum DashboardTab {
   OVERVIEW = 'OVERVIEW',
   MESSAGES = 'MESSAGES',
   CATALOG = 'CATALOG',
+  AUTO_REPLY = 'AUTO_REPLY',
   CUSTOMIZE = 'CUSTOMIZE',
   SETTINGS = 'SETTINGS'
 }
@@ -23,6 +24,12 @@ export interface Product {
   image: string;
 }
 
+export interface FAQ {
+  id: string;
+  question: string;
+  answer: string;
+}
+
 export interface SocialLinks {
   instagram?: string;
   twitter?: string;
@@ -32,16 +39,17 @@ export interface SocialLinks {
 
 export interface BusinessProfile {
   id: string;
-  slug: string; // الرابط المخصص
+  slug: string;
   name: string;
   ownerName: string;
   description?: string;
-  metaDescription?: string; // وصف الميتا المولد بالذكاء الاصطناعي
+  metaDescription?: string;
   phone: string;
   countryCode: string;
   logo: string;
   socialLinks: SocialLinks;
   products: Product[];
+  faqs: FAQ[];
   currency: string;
   returnPolicy: string;
   deliveryPolicy: string;

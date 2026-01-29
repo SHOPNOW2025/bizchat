@@ -28,6 +28,7 @@ export const initTables = async () => {
         logo TEXT,
         social_links JSONB,
         products JSONB,
+        faqs JSONB DEFAULT '[]',
         currency TEXT,
         return_policy TEXT,
         delivery_policy TEXT
@@ -40,6 +41,10 @@ export const initTables = async () => {
     
     try {
       await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`;
+    } catch (e) {}
+
+    try {
+      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS faqs JSONB DEFAULT '[]'`;
     } catch (e) {}
     
     await sql`
@@ -64,11 +69,10 @@ export const initTables = async () => {
       )
     `;
 
-    // تطوير جدول المكالمات لدعم نظام المعرفات الفريدة للمكالمة (Call Instance ID)
     await sql`
       CREATE TABLE IF NOT EXISTS voice_calls (
         session_id TEXT PRIMARY KEY,
-        call_id TEXT, -- معرف فريد للجلسة الحالية لمنع التداخل
+        call_id TEXT,
         status TEXT DEFAULT 'idle',
         caller_role TEXT,
         offer JSONB,
