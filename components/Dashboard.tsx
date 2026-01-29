@@ -26,7 +26,9 @@ import {
   CheckCircle2,
   ChevronRight,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Info // Added missing import for Info icon
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -70,10 +72,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   
   const [localProfile, setLocalProfile] = useState<BusinessProfile>(user.businessProfile);
 
-  // Load profile from user prop once, but don't reset it on every re-render unless explicitly changed from outside
   useEffect(() => {
     setLocalProfile(user.businessProfile);
-  }, [user.id]); // Only reset if the user ID changes (account switch)
+  }, [user.id]);
 
   // Polling for Chat Sessions
   useEffect(() => {
@@ -131,9 +132,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const saveAllChanges = async () => {
     setIsSaving(true);
     try {
+      // Validate Slug
+      const cleanSlug = localProfile.slug.toLowerCase().trim().replace(/[^\w-]/g, '');
+      if (!cleanSlug) {
+        alert("الرابط المخصص لا يمكن أن يكون فارغاً.");
+        setIsSaving(false);
+        return;
+      }
+
       await sql`
         UPDATE profiles SET
           name = ${localProfile.name},
+          slug = ${cleanSlug},
           owner_name = ${localProfile.ownerName},
           description = ${localProfile.description || ''},
           phone = ${localProfile.phone},
@@ -146,14 +156,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         WHERE id = ${localProfile.id}
       `;
       
-      const updatedUser = { ...user, businessProfile: localProfile };
+      const updatedProfile = { ...localProfile, slug: cleanSlug };
+      const updatedUser = { ...user, businessProfile: updatedProfile };
+      setLocalProfile(updatedProfile);
       setUser(updatedUser);
       localStorage.setItem('bazchat_user', JSON.stringify(updatedUser));
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 3000);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error saving data", e);
-      alert("حدث خطأ أثناء الحفظ، يرجى المحاولة مرة أخرى.");
+      if (e.message.includes('unique constraint')) {
+        alert("عذراً، هذا الرابط المخصص مستخدم من قبل متجر آخر. يرجى اختيار اسم آخر.");
+      } else {
+        alert("حدث خطأ أثناء الحفظ، يرجى المحاولة مرة أخرى.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -215,10 +231,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     }
   };
 
+  const getPublicChatUrl = () => {
+    const identifier = localProfile.slug || localProfile.id;
+    return `${window.location.origin}${window.location.pathname}#/chat/${identifier}`;
+  };
+
   const copyChatLink = () => {
-    const url = `${window.location.origin}${window.location.pathname}#/chat/${localProfile.id}`;
+    const url = getPublicChatUrl();
     navigator.clipboard.writeText(url).then(() => {
-      alert('تم نسخ الرابط!');
+      alert('تم نسخ الرابط المخصص لمتجرك!');
     });
   };
 
@@ -421,6 +442,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       case DashboardTab.CUSTOMIZE:
         return (
           <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-4 pb-32">
+            {/* رابط المتجر المخصص */}
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-cyan-100">
+               <h3 className="text-xl font-black mb-6 text-[#0D2B4D] flex items-center gap-3"><LinkIcon className="text-[#00D1FF]" /> رابط المتجر المخصص</h3>
+               <div className="space-y-4">
+                  <p className="text-sm text-gray-500">اختر رابطاً سهلاً لعملائك للوصول لمتجرك ومحادثتك مباشرة.</p>
+                  <div className="flex flex-col md:flex-row items-center gap-2">
+                    <div className="w-full md:w-auto bg-gray-100 px-5 py-4 rounded-2xl font-bold text-gray-400 text-sm ltr">bazchat.com/</div>
+                    <input 
+                      className="w-full flex-1 px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] font-bold text-[#0D2B4D] ltr" 
+                      value={localProfile.slug} 
+                      onChange={(e) => setLocalProfile({...localProfile, slug: e.target.value.toLowerCase().replace(/[^\w-]/g, '')})}
+                      placeholder="my-brand-name"
+                    />
+                  </div>
+                  <div className="p-4 bg-blue-50 rounded-2xl flex items-start gap-3">
+                    <Info size={18} className="text-blue-500 shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-blue-700 leading-relaxed">الرابط المخصص يساعد في تحسين ظهورك ويسهل على العملاء حفظ اسم متجرك. يمكنك استخدام الحروف الإنجليزية والأرقام والشرطة (-) فقط.</p>
+                  </div>
+               </div>
+            </div>
+
             <div className="bg-white p-8 rounded-[40px] shadow-sm border">
               <h3 className="text-xl font-black mb-8 text-[#0D2B4D] flex items-center gap-3"><Palette className="text-[#00D1FF]" /> تخصيص هوية المتجر</h3>
               <div className="space-y-6">
@@ -473,7 +515,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
               <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
                 {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
-                حفظ الهوية
+                حفظ الهوية والتعديلات
               </button>
             </div>
           </div>
@@ -602,7 +644,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
         <div className="flex gap-3">
           <button onClick={copyChatLink} className="p-2.5 bg-gray-50 rounded-xl text-gray-500 border"><Copy size={18} /></button>
-          <button onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/chat/${localProfile.id}`, '_blank')} className="p-2.5 bg-[#00D1FF] rounded-xl text-white shadow-lg"><ExternalLink size={18} /></button>
+          <button onClick={() => window.open(getPublicChatUrl(), '_blank')} className="p-2.5 bg-[#00D1FF] rounded-xl text-white shadow-lg"><ExternalLink size={18} /></button>
         </div>
       </div>
 
@@ -614,7 +656,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           </div>
           <div className="flex gap-4">
             <button onClick={copyChatLink} className="bg-white border text-gray-700 px-8 py-4 rounded-2xl font-bold flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm"><Copy size={20} /> نسخ الرابط</button>
-            <button onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/chat/${localProfile.id}`, '_blank')} className="bg-[#00D1FF] text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-cyan-500/40 hover:scale-105 transition-all"><ExternalLink size={20} /> معاينة الصفحة</button>
+            <button onClick={() => window.open(getPublicChatUrl(), '_blank')} className="bg-[#00D1FF] text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-cyan-500/40 hover:scale-105 transition-all"><ExternalLink size={20} /> معاينة الصفحة</button>
           </div>
         </header>
         {renderContent()}

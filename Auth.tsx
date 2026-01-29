@@ -25,7 +25,6 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Added slug generation helper function to handle unique business URLs
   const generateSlug = (name: string) => {
     return name
       .toLowerCase()
@@ -54,11 +53,11 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
 
         const userId = `u_${Date.now()}`;
         const bizId = `biz_${Math.random().toString(36).substr(2, 9)}`;
-        const initialSlug = generateSlug(fullName); // Generate the initial slug
+        const initialSlug = generateSlug(fullName);
         
         const initialProfile: BusinessProfile = {
           id: bizId,
-          slug: initialSlug, // Fix: Added slug property (Error on line 48)
+          slug: initialSlug,
           name: fullName || 'متجري الجديد',
           ownerName: fullName,
           phone: fullPhone,
@@ -89,7 +88,7 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
             )
           `;
         } catch (slugError) {
-          // If slug exists, append random suffix to ensure uniqueness
+          // If slug exists, append random suffix
           const finalSlug = `${initialSlug}-${Math.random().toString(36).substr(2, 3)}`;
           await sql`
             INSERT INTO profiles (
@@ -116,7 +115,7 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
           
           const profile: BusinessProfile = {
             id: p.id,
-            slug: p.slug || p.id, // Fix: Added slug property (Error on line 90)
+            slug: p.slug || p.id,
             name: p.name,
             ownerName: p.owner_name,
             phone: p.phone,

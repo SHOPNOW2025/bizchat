@@ -32,6 +32,7 @@ export interface SocialLinks {
 
 export interface BusinessProfile {
   id: string;
+  slug: string; // الرابط المخصص
   name: string;
   ownerName: string;
   description?: string;

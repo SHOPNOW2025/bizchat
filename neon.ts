@@ -18,6 +18,7 @@ export const initTables = async () => {
     await sql`
       CREATE TABLE IF NOT EXISTS profiles (
         id TEXT PRIMARY KEY,
+        slug TEXT UNIQUE,
         name TEXT NOT NULL,
         owner_name TEXT,
         description TEXT,
@@ -31,6 +32,13 @@ export const initTables = async () => {
         delivery_policy TEXT
       )
     `;
+
+    // Try to add slug column if it doesn't exist (for existing databases)
+    try {
+      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`;
+    } catch (e) {
+      console.log('Slug column might already exist');
+    }
     
     // New tables for messaging system
     await sql`

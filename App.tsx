@@ -22,8 +22,8 @@ const App: React.FC = () => {
         const handleHashChange = async () => {
           const hash = window.location.hash;
           if (hash.startsWith('#/chat/')) {
-            const profileId = hash.split('/')[2];
-            await loadPublicProfile(profileId);
+            const identifier = hash.split('/')[2];
+            await loadPublicProfile(identifier);
             setView(AppView.PUBLIC_CHAT);
           } else if (hash === '#/dashboard' && user) {
             setView(AppView.DASHBOARD);
@@ -59,13 +59,15 @@ const App: React.FC = () => {
     };
   }, [user]);
 
-  const loadPublicProfile = async (id: string) => {
+  const loadPublicProfile = async (identifier: string) => {
     try {
-      const rows = await sql`SELECT * FROM profiles WHERE id = ${id}`;
+      // البحث باستخدام الـ ID أو الـ Slug
+      const rows = await sql`SELECT * FROM profiles WHERE id = ${identifier} OR slug = ${identifier}`;
       if (rows.length > 0) {
         const p = rows[0];
         setPublicProfile({
           id: p.id,
+          slug: p.slug || p.id,
           name: p.name,
           ownerName: p.owner_name,
           phone: p.phone,
@@ -77,6 +79,8 @@ const App: React.FC = () => {
           returnPolicy: p.return_policy,
           deliveryPolicy: p.delivery_policy
         });
+      } else {
+        setPublicProfile(null);
       }
     } catch (e) {
       console.error("Error loading profile from Neon", e);
