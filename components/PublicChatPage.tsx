@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { BusinessProfile, Product, Message } from '../types';
+import { BusinessProfile, Message } from '../types';
 import { sql } from '../neon';
 import { 
   Send, 
@@ -9,14 +9,12 @@ import {
   ShoppingBag, 
   Info, 
   X, 
-  ChevronDown,
-  ExternalLink,
-  Check,
+  CheckCheck,
+  MessageCircle,
+  User as UserIcon,
   Twitter,
   Facebook,
-  Globe,
-  CheckCheck,
-  MessageCircle
+  CheckCircle2
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -28,14 +26,30 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [inputValue, setInputValue] = useState('');
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isPolicyOpen, setIsPolicyOpen] = useState(false);
+  
+  // Lead form states
+  const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
 
-  // تحديث الـ SEO عند تحميل الصفحة
+  // Check if lead info is already provided
+  useEffect(() => {
+    const savedInfo = localStorage.getItem(`customer_info_${profile.id}`);
+    if (!savedInfo) {
+      setIsLeadFormOpen(true);
+    } else {
+      const { name, phone } = JSON.parse(savedInfo);
+      setCustomerName(name);
+      setCustomerPhone(phone);
+    }
+  }, [profile.id]);
+
   useEffect(() => {
     document.title = `${profile.name} - بازشات`;
     
-    // محاولة تحديث وسم الوصف أو إنشاؤه
     let metaDesc = document.querySelector('meta[name="description"]');
     const content = profile.metaDescription || profile.description || `تواصل مع ${profile.name} مباشرة عبر بازشات.`;
     
@@ -47,41 +61,40 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       metaDesc.setAttribute('content', content);
       document.head.appendChild(metaDesc);
     }
-
-    // تحديث Open Graph (للتواصل الاجتماعي)
-    const updateOG = (property: string, content: string) => {
-      let el = document.querySelector(`meta[property="${property}"]`);
-      if (!el) {
-        el = document.createElement('meta');
-        el.setAttribute('property', property);
-        document.head.appendChild(el);
-      }
-      el.setAttribute('content', content);
-    };
-
-    updateOG('og:title', profile.name);
-    updateOG('og:description', content);
-    updateOG('og:image', profile.logo);
-    updateOG('og:type', 'website');
-
   }, [profile]);
 
   useEffect(() => {
     localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
 
     const initSession = async () => {
+      // If we have lead info, initialize or update session with it
+      const savedInfo = localStorage.getItem(`customer_info_${profile.id}`);
+      let name = customerName;
+      let phone = customerPhone;
+      
+      if (savedInfo) {
+        const parsed = JSON.parse(savedInfo);
+        name = parsed.name;
+        phone = parsed.phone;
+      }
+
       try {
         await sql`
-          INSERT INTO chat_sessions (id, profile_id, last_active)
-          VALUES (${chatSessionId.current}, ${profile.id}, NOW())
-          ON CONFLICT (id) DO UPDATE SET last_active = NOW()
+          INSERT INTO chat_sessions (id, profile_id, customer_name, customer_phone, last_active)
+          VALUES (${chatSessionId.current}, ${profile.id}, ${name || null}, ${phone || null}, NOW())
+          ON CONFLICT (id) DO UPDATE SET 
+            last_active = NOW(),
+            customer_name = EXCLUDED.customer_name,
+            customer_phone = EXCLUDED.customer_phone
         `;
       } catch (e) {
         console.error("Error initializing session", e);
       }
     };
 
-    initSession();
+    if (customerName && customerPhone) {
+      initSession();
+    }
 
     const fetchMessages = async () => {
       try {
@@ -107,11 +120,22 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
-  }, [profile.id]);
+  }, [profile.id, customerName, customerPhone]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleLeadSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerName.trim() || !customerPhone.trim()) return;
+    
+    localStorage.setItem(`customer_info_${profile.id}`, JSON.stringify({
+      name: customerName,
+      phone: customerPhone
+    }));
+    setIsLeadFormOpen(false);
+  };
 
   const handleSend = async () => {
     if (!inputValue.trim()) return;
@@ -145,6 +169,51 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
   return (
     <div className="h-screen bg-[#F0F4F8] flex flex-col max-w-2xl mx-auto shadow-2xl relative overflow-hidden font-tajawal">
+      {/* Lead Generation Modal */}
+      {isLeadFormOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#0D2B4D]/80 backdrop-blur-md"></div>
+          <div className="relative bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl animate-in zoom-in-95 duration-500 text-center">
+            <div className="w-20 h-20 bg-[#00D1FF] rounded-[30px] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-cyan-500/20">
+              <MessageCircle size={40} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-black text-[#0D2B4D] mb-2">مرحباً بك في {profile.name}</h2>
+            <p className="text-gray-500 mb-8 text-sm leading-relaxed font-medium">يرجى تزويدنا ببياناتك لنتمكن من خدمتك بشكل أفضل وبدء الدردشة.</p>
+            
+            <form onSubmit={handleLeadSubmit} className="space-y-4">
+              <div className="relative">
+                <input 
+                  type="text" 
+                  required
+                  placeholder="اسمك الكريم"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full px-12 py-4 rounded-2xl bg-gray-50 border border-gray-100 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all font-bold text-center"
+                />
+                <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              </div>
+              <div className="relative">
+                <input 
+                  type="tel" 
+                  required
+                  placeholder="رقم الهاتف"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="w-full px-12 py-4 rounded-2xl bg-gray-50 border border-gray-100 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all font-bold text-center ltr"
+                />
+                <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              </div>
+              <button 
+                type="submit"
+                className="w-full mt-4 bg-[#0D2B4D] text-white py-5 rounded-[24px] font-black text-lg shadow-2xl shadow-blue-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              >
+                ابدأ الدردشة الآن
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <header className="bg-white p-5 flex items-center justify-between border-b shadow-sm z-30">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-[20px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-gray-50">

@@ -43,15 +43,22 @@ export const initTables = async () => {
       await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`;
     } catch (e) {}
     
-    // New tables for messaging system
+    // Updated table for messaging system with customer info
     await sql`
       CREATE TABLE IF NOT EXISTS chat_sessions (
         id TEXT PRIMARY KEY,
         profile_id TEXT NOT NULL,
+        customer_name TEXT,
+        customer_phone TEXT,
         last_text TEXT,
         last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
+
+    try {
+      await sql`ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS customer_name TEXT`;
+      await sql`ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS customer_phone TEXT`;
+    } catch (e) {}
 
     await sql`
       CREATE TABLE IF NOT EXISTS chat_messages (

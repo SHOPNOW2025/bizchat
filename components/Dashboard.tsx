@@ -30,7 +30,8 @@ import {
   Image as ImageIcon,
   Link as LinkIcon,
   Info,
-  Sparkles // أيقونة الذكاء الاصطناعي
+  Sparkles,
+  Phone as PhoneIcon
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -42,6 +43,8 @@ interface DashboardProps {
 
 interface ChatSession {
   id: string;
+  customerName?: string;
+  customerPhone?: string;
   lastText?: string;
   lastActive?: any;
 }
@@ -82,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       const fetchSessions = async () => {
         try {
           const sessions = await sql`
-            SELECT id, last_text as "lastText", last_active as "lastActive" 
+            SELECT id, customer_name as "customerName", customer_phone as "customerPhone", last_text as "lastText", last_active as "lastActive" 
             FROM chat_sessions 
             WHERE profile_id = ${localProfile.id} 
             ORDER BY last_active DESC
@@ -162,7 +165,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         return;
       }
 
-      // إنشاء وصف الميتا تلقائياً إذا كان هناك تغيير في الاسم أو الوصف أو إذا كان فارغاً
       let finalMeta = localProfile.metaDescription;
       if (!finalMeta || localProfile.name !== user.businessProfile.name || localProfile.description !== user.businessProfile.description) {
         finalMeta = await generateMetaDescription(localProfile.name, localProfile.description || '');
@@ -310,15 +312,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <button 
                     key={session.id}
                     onClick={() => handleSelectSession(session.id)}
-                    className={`w-full p-5 flex items-center gap-4 hover:bg-white transition-all border-b group ${selectedSession === session.id ? 'bg-white border-r-4 border-r-[#00D1FF]' : ''}`}
+                    className={`w-full p-5 flex items-center gap-4 hover:bg-white transition-all border-b group text-right ${selectedSession === session.id ? 'bg-white border-r-4 border-r-[#00D1FF]' : ''}`}
                   >
                     <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#0D2B4D] to-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-lg">
-                      {session.id.substring(0, 3).toUpperCase()}
+                      {session.customerName ? session.customerName.substring(0, 1).toUpperCase() : 'C'}
                     </div>
-                    <div className="text-right flex-1 overflow-hidden">
+                    <div className="flex-1 overflow-hidden">
                       <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-sm text-[#0D2B4D]">عميل {session.id.substring(0, 4)}</span>
-                        <span className="text-[9px] text-gray-400">
+                        <span className="font-bold text-sm text-[#0D2B4D] truncate ml-2">
+                          {session.customerName || `عميل (${session.id.substring(0, 4)})`}
+                        </span>
+                        <span className="text-[9px] text-gray-400 whitespace-nowrap">
                           {session.lastActive ? new Date(session.lastActive).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
                         </span>
                       </div>
@@ -340,10 +344,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                       >
                         <ChevronRight size={24} />
                       </button>
-                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-[#0D2B4D] text-xs">U</div>
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-[#0D2B4D] text-xs">
+                        {activeSessions.find(s => s.id === selectedSession)?.customerName?.substring(0,1) || 'U'}
+                      </div>
                       <div>
-                        <span className="block font-bold text-[#0D2B4D] text-sm md:text-base">عميل ({selectedSession.substring(0, 4)})</span>
-                        <span className="block text-[10px] text-green-500 font-bold">نشط الآن</span>
+                        <span className="block font-bold text-[#0D2B4D] text-sm md:text-base">
+                          {activeSessions.find(s => s.id === selectedSession)?.customerName || 'عميل'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                           <PhoneIcon size={10} className="text-gray-400" />
+                           <span className="text-[10px] text-gray-500 font-bold ltr">
+                             {activeSessions.find(s => s.id === selectedSession)?.customerPhone || 'بدون رقم'}
+                           </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -475,7 +488,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                <h3 className="text-xl font-black mb-6 text-[#0D2B4D] flex items-center gap-3"><LinkIcon className="text-[#00D1FF]" /> رابط المتجر المخصص</h3>
                <div className="space-y-4">
                   <p className="text-sm text-gray-500">اختر رابطاً سهلاً لعملائك للوصول لمتجرك ومحادثتك مباشرة.</p>
-                  <div className="flex flex-col md:flex-row items-center gap-2">
+                  <div className="flex flex-col md:flex-row items-center gap-2 text-right">
                     <div className="w-full md:w-auto bg-gray-100 px-5 py-4 rounded-2xl font-bold text-gray-400 text-sm ltr">bazchat.com/</div>
                     <input 
                       className="w-full flex-1 px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] font-bold text-[#0D2B4D] ltr" 
@@ -503,7 +516,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />
                   </div>
                 </div>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid md:grid-cols-2 gap-6 text-right">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400">اسم المتجر</label>
                     <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.name} onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})} />
@@ -513,7 +526,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.ownerName} onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})} />
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 text-right">
                   <label className="text-xs font-bold text-gray-400">النبذة التعريفية (Bio)</label>
                   <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-32 resize-none" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />
                 </div>
@@ -521,7 +534,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                 {localProfile.metaDescription && (
                   <div className="p-5 bg-gradient-to-r from-[#0D2B4D] to-blue-900 rounded-[24px] text-white shadow-lg overflow-hidden relative">
                     <Sparkles className="absolute -top-2 -right-2 opacity-20 rotate-12" size={64} />
-                    <div className="relative z-10">
+                    <div className="relative z-10 text-right">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-blue-300">تحسين محركات البحث (SEO)</span>
                         {isGeneratingMeta && <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>}
@@ -531,7 +544,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   </div>
                 )}
 
-                <div className="pt-6 border-t">
+                <div className="pt-6 border-t text-right">
                   <h4 className="font-bold mb-4">روابط التواصل الاجتماعي</h4>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="relative">
@@ -567,19 +580,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         return (
           <div className="max-w-3xl space-y-6 animate-in slide-in-from-bottom-4 pb-20">
             <div className="bg-white p-8 rounded-[40px] shadow-sm border">
-               <h3 className="text-xl font-bold mb-8 text-[#0D2B4D]">إعدادات وسياسات المتجر</h3>
+               <h3 className="text-xl font-bold mb-8 text-[#0D2B4D] text-right">إعدادات وسياسات المتجر</h3>
                <div className="space-y-6">
-                 <div className="space-y-2">
+                 <div className="space-y-2 text-right">
                     <label className="text-xs font-bold text-gray-400">عملة العرض</label>
                     <select className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.currency} onChange={(e) => setLocalProfile({...localProfile, currency: e.target.value})}>
                       <option value="SAR">ريال سعودي (SAR)</option><option value="AED">درهم إماراتي (AED)</option><option value="USD">دولار أمريكي (USD)</option>
                     </select>
                  </div>
-                 <div className="space-y-2">
+                 <div className="space-y-2 text-right">
                     <label className="text-xs font-bold text-gray-400">سياسة الارجاع</label>
                     <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-24" value={localProfile.returnPolicy} onChange={(e) => setLocalProfile({...localProfile, returnPolicy: e.target.value})} />
                  </div>
-                 <div className="space-y-2">
+                 <div className="space-y-2 text-right">
                     <label className="text-xs font-bold text-gray-400">سياسة الشحن</label>
                     <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-24" value={localProfile.deliveryPolicy} onChange={(e) => setLocalProfile({...localProfile, deliveryPolicy: e.target.value})} />
                  </div>
@@ -611,7 +624,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
               <h3 className="text-xl font-black text-[#0D2B4D]">إضافة منتج جديد</h3>
               <button onClick={() => setIsAddProductModalOpen(false)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><X size={24} /></button>
             </div>
-            <div className="space-y-5">
+            <div className="space-y-5 text-right">
               <div className="space-y-2">
                 <label className="text-sm font-bold text-gray-600">اسم المنتج</label>
                 <input 
@@ -640,7 +653,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     value={newProduct.image}
                     onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
                     placeholder="https://..."
-                    className="w-full px-12 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]"
+                    className="w-full px-12 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] ltr"
                   />
                   <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 </div>
@@ -690,9 +703,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
       </div>
 
-      <main className="flex-1 lg:mr-72 p-4 md:p-10 lg:p-16">
+      <main className="flex-1 lg:mr-72 p-4 md:p-10 lg:p-16 text-right">
         <header className="hidden lg:flex flex-row items-center justify-between gap-4 mb-12">
-          <div>
+          <div className="text-right">
             <h2 className="text-4xl font-black text-[#0D2B4D]">مرحباً، {localProfile.ownerName}</h2>
             <p className="text-gray-500 mt-2 font-medium">لوحة تحكم متجر <span className="text-[#00D1FF] font-black">{localProfile.name}</span></p>
           </div>
@@ -724,7 +737,7 @@ const MobileNavItem: React.FC<{active: boolean, onClick: () => void, icon: React
 );
 
 const StatCard: React.FC<{icon: React.ReactNode, label: string, value: string, sub: string}> = ({ icon, label, value, sub }) => (
-  <div className="bg-white p-5 rounded-[32px] shadow-sm border border-gray-100"><div className="flex items-center gap-2 mb-3"><div className="p-2 bg-gray-50 rounded-xl">{icon}</div><span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{label}</span></div><div><div className="text-2xl font-black text-[#0D2B4D] mb-0.5">{value}</div><div className={`text-[10px] font-bold ${sub.includes('+') ? 'text-green-500' : 'text-red-500'}`}>{sub}</div></div></div>
+  <div className="bg-white p-5 rounded-[32px] shadow-sm border border-gray-100 text-right"><div className="flex items-center gap-2 mb-3 justify-end"><span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{label}</span><div className="p-2 bg-gray-50 rounded-xl">{icon}</div></div><div><div className="text-2xl font-black text-[#0D2B4D] mb-0.5">{value}</div><div className={`text-[10px] font-bold ${sub.includes('+') ? 'text-green-500' : 'text-red-500'}`}>{sub}</div></div></div>
 );
 
 export default Dashboard;
