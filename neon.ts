@@ -2,33 +2,17 @@
 import { neon } from '@neondatabase/serverless';
 
 /**
- * رابط الاتصال بقاعدة بيانات Neon.
- * تم وضع الرابط الذي قدمته كقيمة افتراضية لضمان عمل التطبيق مباشرة.
+ * رابط قاعدة البيانات المباشر لضمان العمل في بيئة الإنتاج (Production)
+ * دون الحاجة لمتغيرات بيئة قد تسبب أخطاء "process is not defined".
  */
-const DEFAULT_DATABASE_URL = 'postgresql://neondb_owner:npg_J8QlGLHc7fjv@ep-rapid-hall-aebmrm4k-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require';
+const DB_URL = 'postgresql://neondb_owner:npg_J8QlGLHc7fjv@ep-rapid-hall-aebmrm4k-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
-// دالة لجلب متغير البيئة بشكل آمن في المتصفح
-const getEnv = (key: string): string | undefined => {
-  try {
-    // محاولة الوصول لـ process.env (تعمل في بعض البيئات مثل Vite أو عبر Polyfills)
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env[key];
-    }
-  } catch (e) {
-    // تجنب الانهيار في حال عدم وجود الكائن
-  }
-  return undefined;
-};
-
-const DATABASE_URL = getEnv('DATABASE_URL') || getEnv('NETLIFY_DATABASE_URL') || DEFAULT_DATABASE_URL;
+// إنشاء كائن الاتصال
+export const sql = neon(DB_URL);
 
 /**
- * تهيئة كائن الاتصال. 
- * نستخدم "proxy" أو "lazy initialization" إذا كان ذلك ممكناً، 
- * ولكن هنا سنقوم بالتهيئة المباشرة مع التأكد من وجود الرابط.
+ * دالة تهيئة الجداول - تعمل بصمت لضمان وجود الهيكل الأساسي
  */
-export const sql = neon(DATABASE_URL);
-
 export const initTables = async () => {
   try {
     // جدول المستخدمين
@@ -70,10 +54,10 @@ export const initTables = async () => {
       )
     `;
 
-    console.log('Neon Database Initialized Successfully');
+    console.log('Database system ready');
+    return true;
   } catch (error) {
-    console.error('Neon Init Error:', error);
-    // لا نقوم بعمل throw هنا للسماح لـ App.tsx بالتعامل مع الخطأ وعرض واجهة مستخدم
-    throw error;
+    console.error('Database connection failed:', error);
+    return false;
   }
 };
