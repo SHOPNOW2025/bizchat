@@ -2,8 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, DashboardTab, Product, BusinessProfile, Message } from '../types';
 import { sql } from '../neon';
-import { db } from '../firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -67,40 +65,54 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     setLocalProfile(user.businessProfile);
   }, [user.businessProfile]);
 
-  // Real-time Chat Monitoring
+  // Replacement for onSnapshot: Polling for Chat Sessions
   useEffect(() => {
     if (activeTab === DashboardTab.MESSAGES) {
-      const chatsPath = `profiles/${localProfile.id}/chats`;
-      const q = query(collection(db, chatsPath), orderBy("lastActive", "desc"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const sessions = snapshot.docs.map(doc => ({
-          id: doc.id,
-          lastText: doc.data().lastText || 'محادثة جديدة',
-          lastActive: doc.data().lastActive
-        }));
-        setActiveSessions(sessions);
-      });
-      return () => unsubscribe();
+      const fetchSessions = async () => {
+        try {
+          const sessions = await sql`
+            SELECT id, last_text as "lastText", last_active as "lastActive" 
+            FROM chat_sessions 
+            WHERE profile_id = ${localProfile.id} 
+            ORDER BY last_active DESC
+          `;
+          setActiveSessions(sessions as any);
+        } catch (e) {
+          console.error("Error fetching sessions", e);
+        }
+      };
+
+      fetchSessions();
+      const interval = setInterval(fetchSessions, 5000);
+      return () => clearInterval(interval);
     }
   }, [activeTab, localProfile.id]);
 
+  // Polling for Messages in Selected Session
   useEffect(() => {
     if (selectedSession) {
-      const q = query(
-        collection(db, `profiles/${localProfile.id}/chats/${selectedSession}/messages`),
-        orderBy("timestamp", "asc")
-      );
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate() || new Date()
-        })) as Message[];
-        setChatMessages(msgs);
-      });
-      return () => unsubscribe();
+      const fetchMessages = async () => {
+        try {
+          const msgs = await sql`
+            SELECT id, sender, text, timestamp 
+            FROM chat_messages 
+            WHERE session_id = ${selectedSession} 
+            ORDER BY timestamp ASC
+          `;
+          setChatMessages(msgs.map(m => ({
+            ...m,
+            timestamp: new Date(m.timestamp)
+          })) as Message[]);
+        } catch (e) {
+          console.error("Error fetching messages", e);
+        }
+      };
+
+      fetchMessages();
+      const interval = setInterval(fetchMessages, 3000);
+      return () => clearInterval(interval);
     }
-  }, [selectedSession, localProfile.id]);
+  }, [selectedSession]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -131,7 +143,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       setTimeout(() => setShowSaveToast(false), 3000);
     } catch (e) {
       console.error("Error saving data", e);
-      alert("خطأ في الاتصال بقاعدة البيانات");
     } finally {
       setIsSaving(false);
     }
@@ -142,17 +153,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     const text = replyText;
     setReplyText('');
     try {
-      const sessionRef = doc(db, `profiles/${localProfile.id}/chats/${selectedSession}`);
-      await updateDoc(sessionRef, {
-        lastText: `أنت: ${text}`,
-        lastActive: serverTimestamp()
-      });
+      await sql`
+        UPDATE chat_sessions SET 
+          last_text = ${`أنت: ${text}`},
+          last_active = NOW()
+        WHERE id = ${selectedSession}
+      `;
 
-      await addDoc(collection(db, `profiles/${localProfile.id}/chats/${selectedSession}/messages`), {
+      await sql`
+        INSERT INTO chat_messages (session_id, sender, text)
+        VALUES (${selectedSession}, 'owner', ${text})
+      `;
+      
+      // Immediate local update for better UX
+      setChatMessages(prev => [...prev, {
+        id: Date.now().toString(),
         sender: 'owner',
         text: text,
-        timestamp: serverTimestamp()
-      });
+        timestamp: new Date()
+      }]);
     } catch (e) {
       console.error("Error sending reply", e);
     }
@@ -204,12 +223,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     className={`w-full p-5 flex items-center gap-4 hover:bg-white transition-all border-b group ${selectedSession === session.id ? 'bg-white border-r-4 border-r-[#00D1FF]' : ''}`}
                   >
                     <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#0D2B4D] to-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-lg">
-                      {session.id.substring(8, 11).toUpperCase()}
+                      {session.id.substring(0, 3).toUpperCase()}
                     </div>
                     <div className="text-right flex-1 overflow-hidden">
                       <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-sm text-[#0D2B4D]">عميل {session.id.substring(8, 12)}</span>
-                        <span className="text-[9px] text-gray-400">{session.lastActive?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        <span className="font-bold text-sm text-[#0D2B4D]">عميل {session.id.substring(0, 4)}</span>
+                        <span className="text-[9px] text-gray-400">
+                          {session.lastActive ? new Date(session.lastActive).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                        </span>
                       </div>
                       <div className="text-xs text-gray-500 truncate font-medium">{session.lastText}</div>
                     </div>
@@ -223,7 +244,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <div className="p-5 border-b flex items-center justify-between bg-white">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-[#0D2B4D] text-xs">U</div>
-                      <span className="font-bold text-[#0D2B4D]">محادثة العميل ({selectedSession.substring(8, 12)})</span>
+                      <span className="font-bold text-[#0D2B4D]">محادثة العميل ({selectedSession.substring(0, 4)})</span>
                     </div>
                     <span className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-bold">نشط</span>
                   </div>
@@ -264,211 +285,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           </div>
         );
 
-      case DashboardTab.CATALOG:
-        return (
-          <div className="space-y-6 animate-in slide-in-from-bottom-4 pb-20">
-            <div className="flex justify-between items-center bg-white p-5 rounded-3xl border shadow-sm">
-              <div>
-                <h3 className="text-xl font-bold text-[#0D2B4D]">متجر المنتجات</h3>
-                <p className="text-xs text-gray-500">لديك {localProfile.products.length} منتجات معروضة</p>
-              </div>
-              <button 
-                onClick={() => setLocalProfile({...localProfile, products: [...localProfile.products, {id: Date.now().toString(), name: 'منتج جديد', price: 0, description: '', image: 'https://picsum.photos/400/400'}]})}
-                className="bg-[#00D1FF] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-cyan-500/20 hover:bg-[#00B8E0] transition-all"
-              >
-                <Plus size={20} /> إضافة منتج
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {localProfile.products.map(product => (
-                <div key={product.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 group">
-                  <div className="aspect-square relative overflow-hidden bg-gray-100">
-                    <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
-                    <button onClick={() => setLocalProfile({...localProfile, products: localProfile.products.filter(p => p.id !== product.id)})} className="absolute top-4 left-4 p-2 bg-white/90 backdrop-blur text-red-500 rounded-xl shadow-sm"><Trash2 size={16} /></button>
-                  </div>
-                  <div className="p-5 space-y-3">
-                    <input 
-                      className="w-full font-bold text-[#0D2B4D] outline-none border-b border-transparent focus:border-[#00D1FF] bg-transparent"
-                      value={product.name}
-                      onChange={(e) => {
-                        const newProds = localProfile.products.map(p => p.id === product.id ? {...p, name: e.target.value} : p);
-                        setLocalProfile({...localProfile, products: newProds});
-                      }}
-                    />
-                    <div className="flex items-center gap-2">
-                       <input 
-                         type="number"
-                         className="w-20 font-black text-[#00D1FF] outline-none bg-blue-50/50 px-2 py-1 rounded-lg"
-                         value={product.price}
-                         onChange={(e) => {
-                           const newProds = localProfile.products.map(p => p.id === product.id ? {...p, price: Number(e.target.value)} : p);
-                           setLocalProfile({...localProfile, products: newProds});
-                         }}
-                       />
-                       <span className="text-[10px] font-bold text-gray-400">{localProfile.currency}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
-               <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all disabled:opacity-50">
-                 {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
-                 حفظ كافة التغييرات في المتجر
-               </button>
-            </div>
-          </div>
-        );
-
-      case DashboardTab.CUSTOMIZE:
-        return (
-          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-4 pb-32">
-            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#00D1FF]/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-              <h3 className="text-xl font-black mb-8 text-[#0D2B4D] flex items-center gap-3">
-                <Palette className="text-[#00D1FF]" /> تخصيص هوية المتجر والصفحة
-              </h3>
-              
-              <div className="space-y-10">
-                {/* Logo Section */}
-                <div className="flex flex-col md:flex-row items-center gap-8">
-                  <div className="relative group shrink-0">
-                    <div className="w-32 h-32 rounded-[32px] overflow-hidden border-4 border-gray-50 shadow-inner bg-gray-50">
-                      <img src={localProfile.logo} className="w-full h-full object-cover" alt="Logo" />
-                    </div>
-                    <div className="absolute inset-0 bg-black/40 rounded-[32px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                      <Camera className="text-white" size={24} />
-                    </div>
-                  </div>
-                  <div className="flex-1 w-full space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">رابط شعار المتجر (URL)</label>
-                    <input 
-                      className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm font-medium"
-                      placeholder="https://..."
-                      value={localProfile.logo}
-                      onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})}
-                    />
-                    <p className="text-[10px] text-gray-400">يفضل استخدام روابط صور تنتهي بـ .png أو .jpg</p>
-                  </div>
-                </div>
-
-                {/* Info Fields */}
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">اسم المتجر</label>
-                    <input 
-                      className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm font-bold"
-                      value={localProfile.name}
-                      onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">اسم المالك</label>
-                    <input 
-                      className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm font-bold"
-                      value={localProfile.ownerName}
-                      onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">النبذة التعريفية (Bio)</label>
-                  <textarea 
-                    className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm font-medium resize-none h-32"
-                    placeholder="اكتب نبذة تظهر للعملاء عند فتح صفحة الدردشة..."
-                    value={localProfile.description || ''}
-                    onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})}
-                  />
-                  <div className="text-left text-[10px] text-gray-400">سيظهر هذا النص في أعلى صفحة الدردشة العامة</div>
-                </div>
-
-                {/* Social Links */}
-                <div className="pt-8 border-t border-gray-100">
-                  <h4 className="font-bold text-[#0D2B4D] mb-6 flex items-center gap-2">
-                    <Globe size={18} className="text-[#00D1FF]" /> روابط التواصل الاجتماعي
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="relative">
-                      <Instagram size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-500" />
-                      <input 
-                        className="w-full pl-12 pr-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
-                        placeholder="رابط إنستقرام"
-                        value={localProfile.socialLinks.instagram || ''}
-                        onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, instagram: e.target.value}})}
-                      />
-                    </div>
-                    <div className="relative">
-                      <Twitter size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400" />
-                      <input 
-                        className="w-full pl-12 pr-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
-                        placeholder="رابط X (تويتر)"
-                        value={localProfile.socialLinks.twitter || ''}
-                        onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, twitter: e.target.value}})}
-                      />
-                    </div>
-                    <div className="relative">
-                      <Facebook size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-700" />
-                      <input 
-                        className="w-full pl-12 pr-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
-                        placeholder="رابط فيسبوك"
-                        value={localProfile.socialLinks.facebook || ''}
-                        onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, facebook: e.target.value}})}
-                      />
-                    </div>
-                    <div className="relative">
-                      <MessageCircle size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500" />
-                      <input 
-                        className="w-full pl-12 pr-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
-                        placeholder="رابط واتساب (wa.me)"
-                        value={localProfile.socialLinks.whatsapp || ''}
-                        onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, whatsapp: e.target.value}})}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
-               <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#00D1FF] text-white px-12 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all disabled:opacity-50">
-                 {isSaving ? <Save className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                 تحديث هوية المتجر والصفحة
-               </button>
-            </div>
-          </div>
-        );
-
-      case DashboardTab.SETTINGS:
-        return (
-          <div className="max-w-3xl space-y-6 animate-in slide-in-from-bottom-4 pb-20">
-            <div className="bg-white p-8 rounded-[40px] shadow-sm border">
-               <h3 className="text-xl font-bold mb-8 text-[#0D2B4D]">إعدادات وسياسات المتجر</h3>
-               <div className="space-y-6">
-                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400">عملة العرض</label>
-                    <select className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.currency} onChange={(e) => setLocalProfile({...localProfile, currency: e.target.value})}>
-                      <option value="SAR">ريال سعودي (SAR)</option><option value="AED">درهم إماراتي (AED)</option><option value="USD">دولار أمريكي (USD)</option>
-                    </select>
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400">سياسة الارجاع</label>
-                    <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-24" value={localProfile.returnPolicy} onChange={(e) => setLocalProfile({...localProfile, returnPolicy: e.target.value})} />
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400">سياسة الشحن</label>
-                    <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-24" value={localProfile.deliveryPolicy} onChange={(e) => setLocalProfile({...localProfile, deliveryPolicy: e.target.value})} />
-                 </div>
-               </div>
-            </div>
-            <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 border border-red-100 hover:bg-red-100 transition-colors"><LogOut size={22} /> تسجيل الخروج من الحساب</button>
-          </div>
-        );
+      default:
+        return <div>يرجى اختيار علامة تبويب</div>;
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row font-tajawal">
-      {/* Toast Notification */}
       {showSaveToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 z-[999] animate-in slide-in-from-top-10">
           <CheckCircle2 size={18} />
@@ -476,7 +299,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
       )}
 
-      {/* Desktop Sidebar */}
       <aside className="w-72 bg-[#0D2B4D] text-white fixed h-full hidden lg:flex flex-col p-8 z-40">
         <div className="flex items-center gap-3 mb-12 px-2">
           <img src="https://i.ibb.co/XxVXdyhC/6.png" alt="Logo" className="h-10" />
@@ -492,7 +314,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         <button onClick={onLogout} className="mt-auto flex items-center gap-3 px-4 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl transition-colors font-bold"><LogOut size={20} /> الخروج</button>
       </aside>
 
-      {/* Mobile Header */}
       <div className="lg:hidden bg-white border-b px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-sm">
         <div className="flex items-center gap-2">
           <img src="https://i.ibb.co/XxVXdyhC/6.png" alt="Logo" className="h-8" />
@@ -504,7 +325,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
       </div>
 
-      {/* Main Content */}
       <main className="flex-1 lg:mr-72 p-6 md:p-10 lg:p-16">
         <header className="hidden lg:flex flex-row items-center justify-between gap-4 mb-12">
           <div>
@@ -519,7 +339,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         {renderContent()}
       </main>
 
-      {/* Mobile Nav */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center p-3 z-50 shadow-2xl">
         <MobileNavItem active={activeTab === DashboardTab.OVERVIEW} onClick={() => setActiveTab(DashboardTab.OVERVIEW)} icon={<LayoutDashboard size={22} />} label="الرئيسية" />
         <MobileNavItem active={activeTab === DashboardTab.MESSAGES} onClick={() => setActiveTab(DashboardTab.MESSAGES)} icon={<MessageSquare size={22} />} label="الرسائل" />

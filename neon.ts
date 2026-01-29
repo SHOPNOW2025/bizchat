@@ -1,15 +1,12 @@
 
 import { neon } from '@neondatabase/serverless';
 
-// Cleaned up connection string: removed -pooler and channel_binding for better browser compatibility via HTTP
 const DATABASE_URL = 'postgresql://neondb_owner:npg_J8QlGLHc7fjv@ep-rapid-hall-aebmrm4k.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
 export const sql = neon(DATABASE_URL);
 
-// Helper to initialize tables if they don't exist
 export const initTables = async () => {
   try {
-    // We execute these as separate calls to ensure compatibility with the HTTP driver's query limits
     await sql`
       CREATE TABLE IF NOT EXISTS users (
         phone TEXT PRIMARY KEY,
@@ -35,17 +32,29 @@ export const initTables = async () => {
       )
     `;
     
-    // Attempt to add description column if it doesn't exist (migration)
-    try {
-      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS description TEXT`;
-    } catch (e) {
-      // Column might already exist
-    }
+    // New tables for messaging system
+    await sql`
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL,
+        last_text TEXT,
+        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id SERIAL PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        text TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
     console.log('Neon tables initialized successfully');
   } catch (error) {
     console.error('Failed to initialize Neon tables:', error);
-    // Throw error to be caught by the App bootstrap
     throw error;
   }
 };

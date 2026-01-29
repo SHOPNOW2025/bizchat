@@ -1,8 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { BusinessProfile, Product, Message } from '../types';
-import { db } from '../firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, limit, serverTimestamp, setDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { sql } from '../neon';
 import { 
   Send, 
   Phone, 
@@ -29,46 +28,49 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isPolicyOpen, setIsPolicyOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Date.now()}`);
+  const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
     localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
 
-    // Ensure session document exists and is tracking active time
-    const sessionRef = doc(db, "profiles", profile.id, "chats", chatSessionId.current);
-    setDoc(sessionRef, { 
-      lastActive: serverTimestamp(),
-      customerId: chatSessionId.current,
-      createdAt: serverTimestamp()
-    }, { merge: true });
-
-    const q = query(
-      collection(db, "profiles", profile.id, "chats", chatSessionId.current, "messages"),
-      orderBy("timestamp", "asc"),
-      limit(100)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          sender: data.sender,
-          text: data.text,
-          timestamp: data.timestamp?.toDate() || new Date()
-        } as Message;
-      });
-      
-      if (msgs.length === 0) {
-        setMessages([
-          { id: 'welcome', sender: 'owner', text: `مرحباً بك في ${profile.name}! كيف يمكنني مساعدتك اليوم؟`, timestamp: new Date() }
-        ]);
-      } else {
-        setMessages(msgs);
+    const initSession = async () => {
+      try {
+        await sql`
+          INSERT INTO chat_sessions (id, profile_id, last_active)
+          VALUES (${chatSessionId.current}, ${profile.id}, NOW())
+          ON CONFLICT (id) DO UPDATE SET last_active = NOW()
+        `;
+      } catch (e) {
+        console.error("Error initializing session", e);
       }
-    });
+    };
 
-    return () => unsubscribe();
+    initSession();
+
+    const fetchMessages = async () => {
+      try {
+        const msgs = await sql`
+          SELECT id, sender, text, timestamp 
+          FROM chat_messages 
+          WHERE session_id = ${chatSessionId.current} 
+          ORDER BY timestamp ASC
+        `;
+        
+        if (msgs.length === 0) {
+          setMessages([
+            { id: 'welcome', sender: 'owner', text: `مرحباً بك في ${profile.name}! كيف يمكنني مساعدتك اليوم؟`, timestamp: new Date() }
+          ]);
+        } else {
+          setMessages(msgs.map(m => ({ ...m, timestamp: new Date(m.timestamp) })) as Message[]);
+        }
+      } catch (e) {
+        console.error("Error fetching messages", e);
+      }
+    };
+
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
   }, [profile.id]);
 
   useEffect(() => {
@@ -82,31 +84,31 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     setInputValue('');
 
     try {
-      // 1. Update the parent session document to trigger notifications in Dashboard
-      const sessionRef = doc(db, "profiles", profile.id, "chats", chatSessionId.current);
-      await updateDoc(sessionRef, {
-        lastText: text,
-        lastActive: serverTimestamp()
-      });
+      await sql`
+        UPDATE chat_sessions SET
+          last_text = ${text},
+          last_active = NOW()
+        WHERE id = ${chatSessionId.current}
+      `;
 
-      // 2. Add the message to the subcollection
-      await addDoc(collection(db, "profiles", profile.id, "chats", chatSessionId.current, "messages"), {
+      await sql`
+        INSERT INTO chat_messages (session_id, sender, text)
+        VALUES (${chatSessionId.current}, 'customer', ${text})
+      `;
+      
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
         sender: 'customer',
         text: text,
-        timestamp: serverTimestamp()
-      });
-      
+        timestamp: new Date()
+      }]);
     } catch (e) {
       console.error("Error sending message", e);
-      // If document doesn't exist (due to some error), set it again
-      const sessionRef = doc(db, "profiles", profile.id, "chats", chatSessionId.current);
-      await setDoc(sessionRef, { lastText: text, lastActive: serverTimestamp() }, { merge: true });
     }
   };
 
   return (
     <div className="h-screen bg-[#F0F4F8] flex flex-col max-w-2xl mx-auto shadow-2xl relative overflow-hidden font-tajawal">
-      {/* Header */}
       <header className="bg-white p-5 flex items-center justify-between border-b shadow-sm z-30">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-[20px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-gray-50">
@@ -126,14 +128,12 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         </div>
       </header>
 
-      {/* Profile Bio */}
       {profile.description && (
         <div className="bg-white/80 backdrop-blur-md px-6 py-3 border-b text-center">
            <p className="text-xs text-gray-600 font-medium leading-relaxed italic line-clamp-2">"{profile.description}"</p>
         </div>
       )}
 
-      {/* Chat Messages */}
       <main className="flex-1 overflow-y-auto p-5 space-y-6 bg-[url('https://www.transparenttextures.com/patterns/pinstriped-suit.png')]">
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-start' : 'justify-end'}`}>
@@ -153,7 +153,6 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Input Area */}
       <footer className="p-5 bg-white border-t space-y-4">
         <div className="flex items-center gap-3">
           <div className="flex-1 bg-gray-50 rounded-[24px] px-5 flex items-center focus-within:ring-2 focus-within:ring-[#00D1FF] transition-all border border-gray-100">
@@ -181,7 +180,6 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         </div>
       </footer>
 
-      {/* Catalog Drawer */}
       {isCatalogOpen && (
         <div className="absolute inset-0 z-50">
           <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsCatalogOpen(false)}></div>
@@ -226,32 +224,6 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
                 ))
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Policy Modal */}
-      {isPolicyOpen && (
-        <div className="absolute inset-0 z-50 p-6 flex items-center justify-center">
-          <div className="absolute inset-0 bg-[#0D2B4D]/80 backdrop-blur-md animate-in fade-in" onClick={() => setIsPolicyOpen(false)}></div>
-          <div className="relative w-full max-w-sm bg-white rounded-[40px] p-8 shadow-2xl animate-in zoom-in-95 duration-300">
-            <h3 className="text-xl font-black text-[#0D2B4D] mb-8 text-center">معلومات التواصل</h3>
-            <div className="space-y-6">
-              <div className="bg-gray-50 p-5 rounded-3xl space-y-4">
-                <h4 className="text-[10px] font-black text-gray-400 uppercase">السياسات</h4>
-                <div className="space-y-3">
-                   <div className="flex gap-3"><ShoppingBag size={14} className="text-[#00D1FF] shrink-0" /><p className="text-[11px] text-gray-600 leading-relaxed">{profile.returnPolicy}</p></div>
-                   <div className="flex gap-3"><Globe size={14} className="text-[#00D1FF] shrink-0" /><p className="text-[11px] text-gray-600 leading-relaxed">{profile.deliveryPolicy}</p></div>
-                </div>
-              </div>
-              <div className="flex justify-center gap-4">
-                {profile.socialLinks.instagram && <a href={profile.socialLinks.instagram} className="w-14 h-14 rounded-2xl bg-pink-50 text-pink-500 flex items-center justify-center hover:scale-110 transition-all border border-pink-100"><Instagram size={24} /></a>}
-                {profile.socialLinks.twitter && <a href={profile.socialLinks.twitter} className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-400 flex items-center justify-center hover:scale-110 transition-all border border-blue-100"><Twitter size={24} /></a>}
-                {profile.socialLinks.facebook && <a href={profile.socialLinks.facebook} className="w-14 h-14 rounded-2xl bg-blue-800 text-white flex items-center justify-center hover:scale-110 transition-all"><Facebook size={24} /></a>}
-                {profile.socialLinks.whatsapp && <a href={profile.socialLinks.whatsapp} className="w-14 h-14 rounded-2xl bg-green-50 text-green-500 flex items-center justify-center hover:scale-110 transition-all border border-green-100"><Phone size={24} /></a>}
-              </div>
-            </div>
-            <button onClick={() => setIsPolicyOpen(false)} className="w-full mt-8 py-5 bg-[#0D2B4D] text-white font-black rounded-3xl shadow-xl">رجوع للدردشة</button>
           </div>
         </div>
       )}
