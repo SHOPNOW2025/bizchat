@@ -11,19 +11,22 @@ import {
   LogOut, 
   Plus, 
   Trash2, 
-  ExternalLink,
-  Copy,
-  TrendingUp,
-  Users,
-  Save,
-  Send,
-  Instagram,
-  Facebook,
-  Twitter,
-  MessageCircle,
-  Globe,
-  Camera,
-  CheckCircle2
+  ExternalLink, 
+  Copy, 
+  TrendingUp, 
+  Users, 
+  Save, 
+  Send, 
+  Instagram, 
+  Facebook, 
+  Twitter, 
+  MessageCircle, 
+  Globe, 
+  Camera, 
+  CheckCircle2,
+  ChevronRight,
+  X,
+  Image as ImageIcon
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -57,13 +60,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [replyText, setReplyText] = useState('');
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  
+  // New Product State for Modal
+  const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const [localProfile, setLocalProfile] = useState<BusinessProfile>(user.businessProfile);
 
+  // Load profile from user prop once, but don't reset it on every re-render unless explicitly changed from outside
   useEffect(() => {
     setLocalProfile(user.businessProfile);
-  }, [user.businessProfile]);
+  }, [user.id]); // Only reset if the user ID changes (account switch)
 
   // Polling for Chat Sessions
   useEffect(() => {
@@ -149,6 +159,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     }
   };
 
+  const handleAddProduct = () => {
+    if (!newProduct.name || !newProduct.price) {
+      alert("يرجى إدخال اسم المنتج وسعره على الأقل.");
+      return;
+    }
+
+    const productToAdd: Product = {
+      id: Date.now().toString(),
+      name: newProduct.name,
+      price: Number(newProduct.price),
+      description: '',
+      image: newProduct.image || 'https://picsum.photos/seed/' + Math.random() + '/400/400'
+    };
+
+    setLocalProfile(prev => ({
+      ...prev,
+      products: [...prev.products, productToAdd]
+    }));
+
+    setNewProduct({ name: '', price: '', image: '' });
+    setIsAddProductModalOpen(false);
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    setSelectedSession(sessionId);
+    setIsMobileChatOpen(true);
+  };
+
   const handleReply = async () => {
     if (!replyText.trim() || !selectedSession) return;
     const text = replyText;
@@ -210,16 +248,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
       case DashboardTab.MESSAGES:
         return (
-          <div className="flex h-[calc(100vh-200px)] bg-white rounded-3xl shadow-sm border overflow-hidden animate-in slide-in-from-bottom-4">
-            <div className="w-full md:w-80 border-l overflow-y-auto bg-gray-50/30">
-              <div className="p-5 border-b bg-white sticky top-0 z-10"><h3 className="font-bold text-[#0D2B4D]">صندوق الوارد</h3></div>
+          <div className="flex h-[calc(100vh-180px)] md:h-[calc(100vh-200px)] bg-white rounded-3xl shadow-sm border overflow-hidden animate-in slide-in-from-bottom-4">
+            <div className={`w-full md:w-80 border-l overflow-y-auto bg-gray-50/30 ${isMobileChatOpen ? 'hidden md:block' : 'block'}`}>
+              <div className="p-5 border-b bg-white sticky top-0 z-10">
+                <h3 className="font-bold text-[#0D2B4D]">صندوق الوارد</h3>
+              </div>
               {activeSessions.length === 0 ? (
                 <div className="p-10 text-center text-gray-400 text-sm">لا توجد رسائل</div>
               ) : (
                 activeSessions.map(session => (
                   <button 
                     key={session.id}
-                    onClick={() => setSelectedSession(session.id)}
+                    onClick={() => handleSelectSession(session.id)}
                     className={`w-full p-5 flex items-center gap-4 hover:bg-white transition-all border-b group ${selectedSession === session.id ? 'bg-white border-r-4 border-r-[#00D1FF]' : ''}`}
                   >
                     <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#0D2B4D] to-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-lg">
@@ -238,20 +278,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                 ))
               )}
             </div>
-            <div className="hidden md:flex flex-1 flex-col bg-white">
+
+            <div className={`flex-1 flex flex-col bg-white ${isMobileChatOpen ? 'flex' : 'hidden md:flex'}`}>
               {selectedSession ? (
                 <>
-                  <div className="p-5 border-b flex items-center justify-between bg-white">
+                  <div className="p-4 border-b flex items-center justify-between bg-white shadow-sm z-10">
                     <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setIsMobileChatOpen(false)}
+                        className="md:hidden p-2 -mr-2 text-gray-400 hover:text-[#0D2B4D]"
+                      >
+                        <ChevronRight size={24} />
+                      </button>
                       <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-[#0D2B4D] text-xs">U</div>
-                      <span className="font-bold text-[#0D2B4D]">محادثة العميل ({selectedSession.substring(0, 4)})</span>
+                      <div>
+                        <span className="block font-bold text-[#0D2B4D] text-sm md:text-base">عميل ({selectedSession.substring(0, 4)})</span>
+                        <span className="block text-[10px] text-green-500 font-bold">نشط الآن</span>
+                      </div>
                     </div>
-                    <span className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-bold">نشط</span>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-gray-50/50">
+                  
+                  <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-6 bg-gray-50/50">
                     {chatMessages.map(msg => (
                       <div key={msg.id} className={`flex ${msg.sender === 'owner' ? 'justify-start' : 'justify-end'}`}>
-                        <div className={`max-w-[75%] p-4 rounded-2xl text-sm shadow-sm ${msg.sender === 'owner' ? 'bg-[#0D2B4D] text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>
+                        <div className={`max-w-[85%] md:max-w-[75%] p-4 rounded-2xl text-sm shadow-sm ${msg.sender === 'owner' ? 'bg-[#0D2B4D] text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>
                           {msg.text}
                           <div className={`text-[9px] mt-2 opacity-60 text-left`}>
                             {msg.timestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -261,24 +311,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     ))}
                     <div ref={messagesEndRef} />
                   </div>
-                  <div className="p-5 border-t bg-white">
-                    <div className="flex gap-3">
+
+                  <div className="p-4 border-t bg-white">
+                    <div className="flex gap-2">
                       <input 
                         type="text" 
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleReply()}
-                        placeholder="اكتب ردك هنا للعميل..."
-                        className="flex-1 px-5 py-3 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
+                        placeholder="اكتب ردك هنا..."
+                        className="flex-1 px-4 py-3 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
                       />
-                      <button onClick={handleReply} className="w-12 h-12 bg-[#00D1FF] text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-all"><Send size={20} /></button>
+                      <button 
+                        onClick={handleReply} 
+                        className="w-12 h-12 bg-[#00D1FF] text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all"
+                      >
+                        <Send size={20} />
+                      </button>
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-6 text-center">
                   <MessageSquare size={64} className="mb-4 opacity-10" />
-                  <p className="font-bold">اختر محادثة للبدء</p>
+                  <p className="font-bold">اختر محادثة من القائمة للبدء بالرد على عملائك</p>
                 </div>
               )}
             </div>
@@ -289,39 +345,74 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         return (
           <div className="space-y-6 animate-in slide-in-from-bottom-4 pb-20">
             <div className="flex justify-between items-center bg-white p-5 rounded-3xl border shadow-sm">
-              <h3 className="text-xl font-bold text-[#0D2B4D]">إدارة المنتجات</h3>
+              <div>
+                <h3 className="text-xl font-bold text-[#0D2B4D]">إدارة الكتالوج</h3>
+                <p className="text-xs text-gray-400">لديك {localProfile.products.length} منتجات معروضة</p>
+              </div>
               <button 
-                onClick={() => setLocalProfile({...localProfile, products: [...localProfile.products, {id: Date.now().toString(), name: 'منتج جديد', price: 0, description: '', image: 'https://picsum.photos/400/400'}]})}
-                className="bg-[#00D1FF] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg"
+                onClick={() => setIsAddProductModalOpen(true)}
+                className="bg-[#00D1FF] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-[#00B8E0] transition-all"
               >
                 <Plus size={20} /> إضافة منتج
               </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {localProfile.products.map(product => (
-                <div key={product.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 p-4 space-y-4">
-                  <div className="aspect-square relative rounded-2xl overflow-hidden bg-gray-100">
-                    <img src={product.image} className="w-full h-full object-cover" alt="" />
-                    <button onClick={() => setLocalProfile({...localProfile, products: localProfile.products.filter(p => p.id !== product.id)})} className="absolute top-2 left-2 p-2 bg-white text-red-500 rounded-xl shadow-sm"><Trash2 size={16} /></button>
+            
+            {localProfile.products.length === 0 ? (
+              <div className="bg-white rounded-[40px] p-20 text-center border-2 border-dashed border-gray-100">
+                 <Package size={48} className="mx-auto mb-4 text-gray-200" />
+                 <p className="text-gray-400 font-bold">لا توجد منتجات في متجرك حالياً</p>
+                 <button onClick={() => setIsAddProductModalOpen(true)} className="mt-4 text-[#00D1FF] font-bold underline">أضف أول منتج الآن</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {localProfile.products.map(product => (
+                  <div key={product.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 p-4 space-y-4 group">
+                    <div className="aspect-square relative rounded-2xl overflow-hidden bg-gray-50 border border-gray-50">
+                      <img src={product.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={product.name} />
+                      <button 
+                        onClick={() => setLocalProfile({...localProfile, products: localProfile.products.filter(p => p.id !== product.id)})} 
+                        className="absolute top-2 left-2 p-2.5 bg-white/90 backdrop-blur text-red-500 rounded-xl shadow-sm hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">اسم المنتج</label>
+                        <input 
+                          className="w-full font-bold text-[#0D2B4D] outline-none border-b border-transparent focus:border-[#00D1FF] bg-transparent pb-1" 
+                          value={product.name} 
+                          onChange={(e) => {
+                            const newProds = localProfile.products.map(p => p.id === product.id ? {...p, name: e.target.value} : p);
+                            setLocalProfile({...localProfile, products: newProds});
+                          }} 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">السعر</label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            className="w-24 bg-gray-50 px-3 py-2 rounded-xl outline-none font-black text-[#0D2B4D]" 
+                            value={product.price} 
+                            onChange={(e) => {
+                              const newProds = localProfile.products.map(p => p.id === product.id ? {...p, price: Number(e.target.value)} : p);
+                              setLocalProfile({...localProfile, products: newProds});
+                            }} 
+                          />
+                          <span className="text-xs font-bold text-gray-400">{localProfile.currency}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <input className="w-full font-bold text-[#0D2B4D] outline-none border-b border-transparent focus:border-[#00D1FF]" value={product.name} onChange={(e) => {
-                    const newProds = localProfile.products.map(p => p.id === product.id ? {...p, name: e.target.value} : p);
-                    setLocalProfile({...localProfile, products: newProds});
-                  }} />
-                  <div className="flex items-center gap-2">
-                    <input type="number" className="w-24 bg-gray-50 px-3 py-2 rounded-xl outline-none" value={product.price} onChange={(e) => {
-                      const newProds = localProfile.products.map(p => p.id === product.id ? {...p, price: Number(e.target.value)} : p);
-                      setLocalProfile({...localProfile, products: newProds});
-                    }} />
-                    <span className="text-xs font-bold text-gray-400">{localProfile.currency}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
+
             <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-12 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
                 {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
-                حفظ التغييرات
+                حفظ التغييرات في المتجر
               </button>
             </div>
           </div>
@@ -427,6 +518,61 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row font-tajawal">
+      {/* Add Product Modal */}
+      {isAddProductModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsAddProductModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black text-[#0D2B4D]">إضافة منتج جديد</h3>
+              <button onClick={() => setIsAddProductModalOpen(false)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><X size={24} /></button>
+            </div>
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-600">اسم المنتج</label>
+                <input 
+                  type="text" 
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                  placeholder="مثلاً: قميص قطني فاخر"
+                  className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-600">السعر ({localProfile.currency})</label>
+                <input 
+                  type="number" 
+                  value={newProduct.price}
+                  onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+                  placeholder="0.00"
+                  className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-600">رابط صورة المنتج (URL)</label>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={newProduct.image}
+                    onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
+                    placeholder="https://..."
+                    className="w-full px-12 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]"
+                  />
+                  <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                </div>
+                <p className="text-[10px] text-gray-400">اترك الحقل فارغاً لاستخدام صورة عشوائية</p>
+              </div>
+            </div>
+            <button 
+              onClick={handleAddProduct}
+              className="w-full mt-8 bg-[#00D1FF] text-white py-5 rounded-[24px] font-black text-lg shadow-xl shadow-cyan-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              تأكيد الإضافة للكتالوج
+            </button>
+          </div>
+        </div>
+      )}
+
       {showSaveToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 z-[999] animate-in slide-in-from-top-10">
           <CheckCircle2 size={18} />
@@ -456,11 +602,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
         <div className="flex gap-3">
           <button onClick={copyChatLink} className="p-2.5 bg-gray-50 rounded-xl text-gray-500 border"><Copy size={18} /></button>
-          <button onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/chat/${localProfile.id}`, '_blank')} className="p-2.5 bg-[#00D1FF] rounded-xl text-white shadow-lg shadow-cyan-500/30"><ExternalLink size={18} /></button>
+          <button onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/chat/${localProfile.id}`, '_blank')} className="p-2.5 bg-[#00D1FF] rounded-xl text-white shadow-lg"><ExternalLink size={18} /></button>
         </div>
       </div>
 
-      <main className="flex-1 lg:mr-72 p-6 md:p-10 lg:p-16">
+      <main className="flex-1 lg:mr-72 p-4 md:p-10 lg:p-16">
         <header className="hidden lg:flex flex-row items-center justify-between gap-4 mb-12">
           <div>
             <h2 className="text-4xl font-black text-[#0D2B4D]">مرحباً، {localProfile.ownerName}</h2>
@@ -476,7 +622,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center p-3 z-50 shadow-2xl">
         <MobileNavItem active={activeTab === DashboardTab.OVERVIEW} onClick={() => setActiveTab(DashboardTab.OVERVIEW)} icon={<LayoutDashboard size={22} />} label="الرئيسية" />
-        <MobileNavItem active={activeTab === DashboardTab.MESSAGES} onClick={() => setActiveTab(DashboardTab.MESSAGES)} icon={<MessageSquare size={22} />} label="الرسائل" />
+        <MobileNavItem active={activeTab === DashboardTab.MESSAGES} onClick={() => { setActiveTab(DashboardTab.MESSAGES); setIsMobileChatOpen(false); }} icon={<MessageSquare size={22} />} label="الرسائل" />
         <MobileNavItem active={activeTab === DashboardTab.CATALOG} onClick={() => setActiveTab(DashboardTab.CATALOG)} icon={<Package size={22} />} label="المنتجات" />
         <MobileNavItem active={activeTab === DashboardTab.CUSTOMIZE} onClick={() => setActiveTab(DashboardTab.CUSTOMIZE)} icon={<Palette size={22} />} label="الهوية" />
         <MobileNavItem active={activeTab === DashboardTab.SETTINGS} onClick={() => setActiveTab(DashboardTab.SETTINGS)} icon={<Settings size={22} />} label="الإعدادات" />
