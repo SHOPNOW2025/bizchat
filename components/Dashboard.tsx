@@ -60,9 +60,9 @@ const STATS_DATA = [
   { name: 'الجمعة', views: 349, chats: 430 },
 ];
 
-// روابط الأصوات - تم اختيار نغمة استقبال أكثر حدة ووضوحاً
+// روابط الأصوات - نغمة استقبال بسيطة ومميزة مدتها ثانية واحدة
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3'; // نغمة حادة ومسموعة
+const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3'; 
 
 const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(DashboardTab.OVERVIEW);
@@ -87,7 +87,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
   const playSound = (url: string) => {
     const audio = new Audio(url);
-    audio.volume = 1.0; // التأكد من أن الصوت في أعلى مستوياته
+    audio.volume = 1.0; 
     audio.play().catch(e => console.debug("Audio play blocked by browser"));
   };
 
@@ -149,7 +149,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       const interval = setInterval(fetchMessages, 3000);
       return () => {
         clearInterval(interval);
-        prevMessagesCount.current = null; // Reset when session changes
+        prevMessagesCount.current = null; 
       };
     }
   }, [selectedSession]);
@@ -259,14 +259,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const handleSelectSession = (sessionId: string) => {
     setSelectedSession(sessionId);
     setIsMobileChatOpen(true);
-    prevMessagesCount.current = null; // Reset to avoid double sound on open
+    prevMessagesCount.current = null; 
   };
 
   const handleReply = async () => {
     if (!replyText.trim() || !selectedSession) return;
     const text = replyText;
     setReplyText('');
-    playSound(SEND_SOUND); // صوت الإرسال
+    playSound(SEND_SOUND); 
     
     try {
       await sql`

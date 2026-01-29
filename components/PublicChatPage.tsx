@@ -22,9 +22,9 @@ interface PublicChatPageProps {
   profile: BusinessProfile;
 }
 
-// روابط الأصوات - تم اختيار نغمة استقبال أكثر حدة ووضوحاً
+// روابط الأصوات - نغمة استقبال بسيطة ومميزة مدتها ثانية واحدة
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3'; // نغمة حادة ومسموعة
+const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3'; 
 
 const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -43,7 +43,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
   const playSound = (url: string) => {
     const audio = new Audio(url);
-    audio.volume = 1.0; // التأكد من أن الصوت في أعلى مستوياته
+    audio.volume = 1.0; 
     audio.play().catch(e => console.debug("Audio play blocked by browser"));
   };
 
@@ -135,7 +135,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           setMessages(newMessages);
         }
         
-        prevMessagesCount.current = newMessages.length || 1; // 1 to account for welcome message if empty
+        prevMessagesCount.current = newMessages.length || 1; 
       } catch (e) {
         console.error("Error fetching messages", e);
       }
@@ -169,7 +169,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
     const text = inputValue;
     setInputValue('');
-    playSound(SEND_SOUND); // صوت الإرسال
+    playSound(SEND_SOUND); 
 
     try {
       await sql`
