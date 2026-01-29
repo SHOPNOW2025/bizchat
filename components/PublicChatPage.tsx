@@ -15,22 +15,32 @@ import {
   Twitter,
   Facebook,
   CheckCircle2,
-  Volume2
+  Volume2,
+  VolumeX,
+  Settings
 } from 'lucide-react';
 
 interface PublicChatPageProps {
   profile: BusinessProfile;
 }
 
-// روابط الأصوات - نغمة استقبال بسيطة ومميزة مدتها ثانية واحدة
+// خيارات الأصوات المتاحة للعميل
+const SOUND_OPTIONS = [
+  { id: 'standard', name: 'قياسي', url: 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3' },
+  { id: 'alert', name: 'تنبيه حاد', url: 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3' },
+  { id: 'soft', name: 'نغمة هادئة', url: 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3' },
+  { id: 'mute', name: 'كتم الصوت', url: '' },
+];
+
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3'; 
 
 const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isPolicyOpen, setIsPolicyOpen] = useState(false);
+  const [showSoundMenu, setShowSoundMenu] = useState(false);
+  const [selectedSoundId, setSelectedSoundId] = useState(localStorage.getItem('customer_sound_id') || 'standard');
   
   // Lead form states
   const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
@@ -42,9 +52,25 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
 
   const playSound = (url: string) => {
+    if (!url) return;
     const audio = new Audio(url);
     audio.volume = 1.0; 
     audio.play().catch(e => console.debug("Audio play blocked by browser"));
+  };
+
+  const changeSoundPreference = (id: string) => {
+    setSelectedSoundId(id);
+    localStorage.setItem('customer_sound_id', id);
+    const sound = SOUND_OPTIONS.find(s => s.id === id);
+    if (sound && sound.url) playSound(sound.url);
+    setShowSoundMenu(false);
+  };
+
+  const handleReceiveSound = () => {
+    const sound = SOUND_OPTIONS.find(s => s.id === selectedSoundId);
+    if (sound && sound.url) {
+      playSound(sound.url);
+    }
   };
 
   // Check if lead info is already provided
@@ -79,7 +105,6 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
 
     const initSession = async () => {
-      // If we have lead info, initialize or update session with it
       const savedInfo = localStorage.getItem(`customer_info_${profile.id}`);
       let name = customerName;
       let phone = customerPhone;
@@ -123,7 +148,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         if (prevMessagesCount.current !== null && newMessages.length > prevMessagesCount.current) {
           const lastMsg = newMessages[newMessages.length - 1];
           if (lastMsg.sender === 'owner') {
-            playSound(RECEIVE_SOUND);
+            handleReceiveSound();
           }
         }
 
@@ -144,7 +169,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
-  }, [profile.id, customerName, customerPhone]);
+  }, [profile.id, customerName, customerPhone, selectedSoundId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -154,7 +179,6 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     e.preventDefault();
     if (!customerName.trim() || !customerPhone.trim()) return;
     
-    // Play a sound to initialize AudioContext on user interaction
     playSound(SEND_SOUND);
     
     localStorage.setItem(`customer_info_${profile.id}`, JSON.stringify({
@@ -289,7 +313,27 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         <div ref={messagesEndRef} />
       </main>
 
-      <footer className="p-5 bg-white border-t space-y-4">
+      <footer className="p-5 bg-white border-t space-y-4 relative">
+        {showSoundMenu && (
+          <div className="absolute bottom-full left-5 right-5 mb-2 bg-white border shadow-2xl rounded-3xl p-4 z-50 animate-in slide-in-from-bottom-4">
+             <div className="flex justify-between items-center mb-4 border-b pb-2">
+               <span className="text-xs font-black text-[#0D2B4D] uppercase tracking-widest">تغيير نغمة التنبيه</span>
+               <button onClick={() => setShowSoundMenu(false)} className="text-gray-400"><X size={16} /></button>
+             </div>
+             <div className="grid grid-cols-2 gap-2">
+               {SOUND_OPTIONS.map(sound => (
+                 <button 
+                  key={sound.id}
+                  onClick={() => changeSoundPreference(sound.id)}
+                  className={`px-4 py-3 rounded-2xl text-[10px] font-bold transition-all border ${selectedSoundId === sound.id ? 'bg-[#0D2B4D] text-white border-[#0D2B4D]' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-[#00D1FF]'}`}
+                 >
+                   {sound.name}
+                 </button>
+               ))}
+             </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           <div className="flex-1 bg-gray-50 rounded-[24px] px-5 flex items-center focus-within:ring-2 focus-within:ring-[#00D1FF] transition-all border border-gray-100">
             <input 
@@ -309,13 +353,14 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
             <Send size={24} className="transform -rotate-45 -mr-1" />
           </button>
         </div>
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-between items-center">
           <button onClick={() => setIsPolicyOpen(true)} className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2 hover:text-[#00D1FF] transition-colors group">
             <Info size={14} className="group-hover:rotate-12 transition-transform" /> سياسات ومعلومات المتجر
           </button>
-          <div className="flex items-center gap-1 text-[10px] text-gray-300 font-bold uppercase tracking-widest">
-            <Volume2 size={12} /> التنبيهات نشطة
-          </div>
+          <button onClick={() => setShowSoundMenu(!showSoundMenu)} className="flex items-center gap-2 text-[10px] text-gray-500 font-black uppercase tracking-widest hover:text-[#00D1FF] transition-colors">
+            {selectedSoundId === 'mute' ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            {SOUND_OPTIONS.find(s => s.id === selectedSoundId)?.name}
+          </button>
         </div>
       </footer>
 

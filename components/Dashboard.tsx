@@ -32,7 +32,9 @@ import {
   Info,
   Sparkles,
   Phone as PhoneIcon,
-  Volume2
+  Volume2,
+  VolumeX,
+  Bell
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -60,9 +62,15 @@ const STATS_DATA = [
   { name: 'الجمعة', views: 349, chats: 430 },
 ];
 
-// روابط الأصوات - نغمة استقبال بسيطة ومميزة مدتها ثانية واحدة
+// خيارات الأصوات المتاحة
+const SOUND_OPTIONS = [
+  { id: 'standard', name: 'قياسي', url: 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3' },
+  { id: 'alert', name: 'تنبيه حاد', url: 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3' },
+  { id: 'soft', name: 'نغمة هادئة', url: 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3' },
+  { id: 'mute', name: 'كتم الصوت', url: '' },
+];
+
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3'; 
 
 const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(DashboardTab.OVERVIEW);
@@ -75,6 +83,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [replyText, setReplyText] = useState('');
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [showSoundSettings, setShowSoundSettings] = useState(false);
+  const [selectedSoundId, setSelectedSoundId] = useState(localStorage.getItem('merchant_sound_id') || 'standard');
   
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -86,9 +96,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   }, [user.id]);
 
   const playSound = (url: string) => {
+    if (!url) return;
     const audio = new Audio(url);
     audio.volume = 1.0; 
     audio.play().catch(e => console.debug("Audio play blocked by browser"));
+  };
+
+  const handleReceiveSound = () => {
+    const sound = SOUND_OPTIONS.find(s => s.id === selectedSoundId);
+    if (sound && sound.url) {
+      playSound(sound.url);
+    }
+  };
+
+  const changeSoundPreference = (id: string) => {
+    setSelectedSoundId(id);
+    localStorage.setItem('merchant_sound_id', id);
+    const sound = SOUND_OPTIONS.find(s => s.id === id);
+    if (sound && sound.url) playSound(sound.url);
   };
 
   // Polling for Chat Sessions
@@ -134,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           if (prevMessagesCount.current !== null && newMessages.length > prevMessagesCount.current) {
             const lastMsg = newMessages[newMessages.length - 1];
             if (lastMsg.sender === 'customer') {
-              playSound(RECEIVE_SOUND);
+              handleReceiveSound();
             }
           }
           
@@ -152,7 +177,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         prevMessagesCount.current = null; 
       };
     }
-  }, [selectedSession]);
+  }, [selectedSession, selectedSoundId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -333,11 +358,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
       case DashboardTab.MESSAGES:
         return (
-          <div className="flex h-[calc(100vh-180px)] md:h-[calc(100vh-200px)] bg-white rounded-3xl shadow-sm border overflow-hidden animate-in slide-in-from-bottom-4">
+          <div className="flex h-[calc(100vh-180px)] md:h-[calc(100vh-200px)] bg-white rounded-3xl shadow-sm border overflow-hidden animate-in slide-in-from-bottom-4 relative">
             <div className={`w-full md:w-80 border-l overflow-y-auto bg-gray-50/30 ${isMobileChatOpen ? 'hidden md:block' : 'block'}`}>
               <div className="p-5 border-b bg-white sticky top-0 z-10 flex items-center justify-between">
                 <h3 className="font-bold text-[#0D2B4D]">صندوق الوارد</h3>
-                <Volume2 size={16} className="text-gray-300" />
+                <button onClick={() => setShowSoundSettings(!showSoundSettings)} className="p-2 text-gray-400 hover:text-[#00D1FF] transition-colors relative">
+                   {selectedSoundId === 'mute' ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                   {showSoundSettings && (
+                     <div className="absolute top-10 left-0 w-48 bg-white border shadow-2xl rounded-2xl p-3 z-50 animate-in zoom-in-95 text-right">
+                       <p className="text-[10px] font-black text-gray-400 mb-3 border-b pb-2 uppercase tracking-widest">إعدادات التنبيهات</p>
+                       <div className="space-y-1">
+                         {SOUND_OPTIONS.map(sound => (
+                           <button 
+                             key={sound.id}
+                             onClick={(e) => { e.stopPropagation(); changeSoundPreference(sound.id); }}
+                             className={`w-full text-right px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedSoundId === sound.id ? 'bg-[#00D1FF] text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                           >
+                             {sound.name}
+                           </button>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                </button>
               </div>
               {activeSessions.length === 0 ? (
                 <div className="p-10 text-center text-gray-400 text-sm">لا توجد رسائل</div>
