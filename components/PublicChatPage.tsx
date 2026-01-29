@@ -16,7 +16,8 @@ import {
   MessageCircle,
   Package,
   CheckCircle2,
-  User as UserIcon
+  User as UserIcon,
+  ShieldCheck
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -36,17 +37,17 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [currentCallId, setCurrentCallId] = useState<string | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
   const [isBotThinking, setIsBotThinking] = useState(false);
-  const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
   const [onboardingStep, setOnboardingStep] = useState<'none' | 'name' | 'phone' | 'done'>('none');
 
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringAudio = useRef<HTMLAudioElement | null>(null);
-  const processedCandidates = useRef<Set<string>>(new Set());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
+
+  const playSound = (url: string) => { new Audio(url).play().catch(() => {}); };
 
   // Initial Logic: Load messages and check session data
   useEffect(() => {
@@ -57,21 +58,25 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         const rows = await sql`SELECT * FROM chat_sessions WHERE id = ${chatSessionId.current}`;
         
         if (rows.length === 0) {
+          // جلسة جديدة تماماً
           await sql`
             INSERT INTO chat_sessions (id, profile_id, customer_name, customer_phone)
             VALUES (${chatSessionId.current}, ${profile.id}, 'عميل بازشات', '')
           `;
           setOnboardingStep('name');
-          triggerOnboardingBot('name');
+          await triggerOnboardingBot('name');
         } else {
           const s = rows[0];
-          setCustomerInfo({ name: s.customer_name || '', phone: s.customer_phone || '' });
+          // التحقق مما إذا كان العميل قد أكمل بياناته
           if (!s.customer_name || s.customer_name === 'عميل بازشات') {
             setOnboardingStep('name');
-            triggerOnboardingBot('name');
+            // التأكد من عدم إرسال الرسالة إذا كانت موجودة مسبقاً في التاريخ
+            const existing = await sql`SELECT id FROM chat_messages WHERE session_id = ${chatSessionId.current} AND text LIKE '%ما هو اسمك الكريم؟%'`;
+            if (existing.length === 0) await triggerOnboardingBot('name');
           } else if (!s.customer_phone) {
             setOnboardingStep('phone');
-            triggerOnboardingBot('phone');
+            const existing = await sql`SELECT id FROM chat_messages WHERE session_id = ${chatSessionId.current} AND text LIKE '%زودنا برقم هاتفك%'`;
+            if (existing.length === 0) await triggerOnboardingBot('phone');
           } else {
             setOnboardingStep('done');
           }
@@ -83,20 +88,23 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     initSession();
   }, [profile.id]);
 
-  const triggerOnboardingBot = (step: 'name' | 'phone') => {
+  const triggerOnboardingBot = async (step: 'name' | 'phone') => {
     setIsBotThinking(true);
-    setTimeout(async () => {
-      setIsBotThinking(false);
-      let text = '';
-      if (step === 'name') text = "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟";
-      else if (step === 'phone') text = "تشرفنا بك! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك.";
-      
-      const botMsg: Message = { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() };
-      setMessages(prev => [...prev, botMsg]);
-    }, 1000);
-  };
+    // تأخير بسيط لإعطاء إحساس بالدردشة الحقيقية
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsBotThinking(false);
 
-  const playSound = (url: string) => { new Audio(url).play().catch(() => {}); };
+    let text = '';
+    if (step === 'name') text = "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟";
+    else if (step === 'phone') text = "تشرفنا بك! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك بشكل أفضل.";
+    
+    try {
+      // حفظ رسالة البوت في قاعدة البيانات فوراً لضمان عدم اختفائها
+      await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${text})`;
+      // تحديث الحالة المحلية أيضاً لتظهر فوراً
+      setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() }]);
+    } catch (e) {}
+  };
 
   // Call Signaling Logic (Customer)
   useEffect(() => {
@@ -132,7 +140,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       } catch (e) {}
     };
 
-    const timer = setInterval(monitorSignaling, 1500);
+    const timer = setInterval(monitorSignaling, 2000);
     return () => clearInterval(timer);
   }, [callStatus, currentCallId]);
 
@@ -189,6 +197,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     const fetchMsgs = async () => {
       try {
         const msgs = await sql`SELECT id, sender, text, timestamp FROM chat_messages WHERE session_id = ${chatSessionId.current} ORDER BY timestamp ASC`;
+        // تحديث مصفوفة الرسائل فقط إذا كان هناك تغيير في العدد أو المحتوى
         setMessages(msgs.map(m => ({ ...m, timestamp: new Date(m.timestamp) })) as Message[]);
       } catch (e) {}
     };
@@ -206,35 +215,37 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     playSound(SEND_SOUND);
 
     try {
-      // Logic for Onboarding
       if (onboardingStep === 'name') {
         const name = txt.trim();
+        // تحديث اسم العميل في الجلسة وحفظ الرسالة
         await sql`UPDATE chat_sessions SET customer_name = ${name}, last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
         await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
-        setCustomerInfo(prev => ({ ...prev, name }));
         setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
+        
         setOnboardingStep('phone');
-        triggerOnboardingBot('phone');
+        await triggerOnboardingBot('phone');
         return;
       } else if (onboardingStep === 'phone') {
         const phone = txt.trim();
+        // تحديث رقم الهاتف في الجلسة وحفظ الرسالة
         await sql`UPDATE chat_sessions SET customer_phone = ${phone}, last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
         await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
-        setCustomerInfo(prev => ({ ...prev, phone }));
         setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
+        
         setOnboardingStep('done');
         
+        // رسالة ترحيب نهائية بعد جمع البيانات
         setIsBotThinking(true);
-        setTimeout(() => {
+        setTimeout(async () => {
           setIsBotThinking(false);
           const confirmText = "شكراً لك! تم حفظ بياناتك بنجاح. كيف يمكنني مساعدتك اليوم؟";
-          sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${confirmText})`;
+          await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${confirmText})`;
           setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: confirmText, timestamp: new Date() }]);
         }, 1000);
         return;
       }
 
-      // Normal Message
+      // إرسال رسالة عادية
       await sql`UPDATE chat_sessions SET last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
       await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
       setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
@@ -248,14 +259,11 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       alert("يرجى إكمال إدخال اسمك ورقم هاتفك أولاً");
       return;
     }
-    // 1. Send the question as customer message
     await handleSend(faq.question);
     
-    // 2. Bot thinking simulation
     setIsBotThinking(true);
     setTimeout(async () => {
       setIsBotThinking(false);
-      // 3. Send the answer as owner message
       try {
         await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${faq.answer})`;
         setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: faq.answer, timestamp: new Date() }]);
@@ -344,7 +352,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
       {/* Chat History */}
       <main className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50/20">
-        {messages.length === 0 && (
+        {messages.length === 0 && !isBotThinking && (
           <div className="text-center py-10 px-6 animate-in fade-in duration-1000">
              <div className="w-24 h-24 bg-[#00D1FF]/10 rounded-[40px] flex items-center justify-center text-[#00D1FF] mx-auto mb-8 shadow-inner"><MessageCircle size={48}/></div>
              <h3 className="text-2xl font-black text-[#0D2B4D] mb-3">أهلاً بك في بازشات {profile.name}</h3>
@@ -353,7 +361,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         )}
 
         {messages.map((m, idx) => (
-          <div key={m.id} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
+          <div key={m.id || idx} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
             <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
               <p className="leading-relaxed">{m.text}</p>
               <div className="text-[10px] mt-2 opacity-50 text-left font-black tracking-tighter uppercase">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
@@ -362,7 +370,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         ))}
         
         {isBotThinking && (
-          <div className="flex justify-start animate-pulse">
+          <div className="flex justify-start">
             <div className="bg-white border p-4 rounded-3xl rounded-tl-none flex gap-1.5 shadow-sm">
               <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
               <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-150"></div>
@@ -374,7 +382,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       </main>
 
       {/* Auto-Reply / FAQ Quick Chips */}
-      {onboardingStep === 'done' && profile.faqs && profile.faqs.length > 0 && messages.length < 20 && (
+      {onboardingStep === 'done' && profile.faqs && profile.faqs.length > 0 && (
         <div className="bg-white/80 backdrop-blur-sm px-4 py-4 flex gap-3 overflow-x-auto no-scrollbar border-t border-gray-50 shrink-0">
           <div className="w-10 h-10 bg-[#0D2B4D] text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10"><Bot size={22}/></div>
           {profile.faqs.map((faq) => (
@@ -408,20 +416,19 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
             {onboardingStep !== 'done' && (
               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#00D1FF] flex items-center gap-1.5 font-black text-[10px] uppercase">
                 <span className="w-1.5 h-1.5 bg-[#00D1FF] rounded-full animate-ping"></span>
-                إجباري
+                مطلوب
               </div>
             )}
           </div>
           <button 
             onClick={() => handleSend()} 
-            disabled={!inputValue.trim()} 
+            disabled={!inputValue.trim() || isBotThinking} 
             className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl shadow-blue-500/20 active:scale-90 transition-all disabled:opacity-50"
           >
             <Send size={26} className="-rotate-45" />
           </button>
         </div>
         
-        {/* Verification Badge */}
         <div className="flex justify-center mt-3">
           <div className="flex items-center gap-1.5 text-gray-400 text-[9px] font-bold">
             <ShieldCheck size={12} className="text-green-500" />
@@ -432,12 +439,5 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     </div>
   );
 };
-
-const ShieldCheck = ({ size, className }: { size: number, className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
-    <path d="m9 12 2 2 4-4" />
-  </svg>
-);
 
 export default PublicChatPage;
