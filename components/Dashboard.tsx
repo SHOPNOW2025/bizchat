@@ -65,9 +65,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     setLocalProfile(user.businessProfile);
   }, [user.businessProfile]);
 
-  // Replacement for onSnapshot: Polling for Chat Sessions
+  // Polling for Chat Sessions
   useEffect(() => {
-    if (activeTab === DashboardTab.MESSAGES) {
+    if (activeTab === DashboardTab.MESSAGES || activeTab === DashboardTab.OVERVIEW) {
       const fetchSessions = async () => {
         try {
           const sessions = await sql`
@@ -143,6 +143,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       setTimeout(() => setShowSaveToast(false), 3000);
     } catch (e) {
       console.error("Error saving data", e);
+      alert("حدث خطأ أثناء الحفظ، يرجى المحاولة مرة أخرى.");
     } finally {
       setIsSaving(false);
     }
@@ -165,7 +166,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         VALUES (${selectedSession}, 'owner', ${text})
       `;
       
-      // Immediate local update for better UX
       setChatMessages(prev => [...prev, {
         id: Date.now().toString(),
         sender: 'owner',
@@ -248,7 +248,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     </div>
                     <span className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-bold">نشط</span>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-gray-50/50">
+                  <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-gray-50/50">
                     {chatMessages.map(msg => (
                       <div key={msg.id} className={`flex ${msg.sender === 'owner' ? 'justify-start' : 'justify-end'}`}>
                         <div className={`max-w-[75%] p-4 rounded-2xl text-sm shadow-sm ${msg.sender === 'owner' ? 'bg-[#0D2B4D] text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>
@@ -271,17 +271,152 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                         placeholder="اكتب ردك هنا للعميل..."
                         className="flex-1 px-5 py-3 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] transition-all text-sm"
                       />
-                      <button onClick={handleReply} className="w-12 h-12 bg-[#00D1FF] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all"><Send size={20} /></button>
+                      <button onClick={handleReply} className="w-12 h-12 bg-[#00D1FF] text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-all"><Send size={20} /></button>
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/30">
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                   <MessageSquare size={64} className="mb-4 opacity-10" />
-                  <p className="font-bold text-gray-400">اختر محادثة من القائمة للبدء</p>
+                  <p className="font-bold">اختر محادثة للبدء</p>
                 </div>
               )}
             </div>
+          </div>
+        );
+
+      case DashboardTab.CATALOG:
+        return (
+          <div className="space-y-6 animate-in slide-in-from-bottom-4 pb-20">
+            <div className="flex justify-between items-center bg-white p-5 rounded-3xl border shadow-sm">
+              <h3 className="text-xl font-bold text-[#0D2B4D]">إدارة المنتجات</h3>
+              <button 
+                onClick={() => setLocalProfile({...localProfile, products: [...localProfile.products, {id: Date.now().toString(), name: 'منتج جديد', price: 0, description: '', image: 'https://picsum.photos/400/400'}]})}
+                className="bg-[#00D1FF] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg"
+              >
+                <Plus size={20} /> إضافة منتج
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {localProfile.products.map(product => (
+                <div key={product.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 p-4 space-y-4">
+                  <div className="aspect-square relative rounded-2xl overflow-hidden bg-gray-100">
+                    <img src={product.image} className="w-full h-full object-cover" alt="" />
+                    <button onClick={() => setLocalProfile({...localProfile, products: localProfile.products.filter(p => p.id !== product.id)})} className="absolute top-2 left-2 p-2 bg-white text-red-500 rounded-xl shadow-sm"><Trash2 size={16} /></button>
+                  </div>
+                  <input className="w-full font-bold text-[#0D2B4D] outline-none border-b border-transparent focus:border-[#00D1FF]" value={product.name} onChange={(e) => {
+                    const newProds = localProfile.products.map(p => p.id === product.id ? {...p, name: e.target.value} : p);
+                    setLocalProfile({...localProfile, products: newProds});
+                  }} />
+                  <div className="flex items-center gap-2">
+                    <input type="number" className="w-24 bg-gray-50 px-3 py-2 rounded-xl outline-none" value={product.price} onChange={(e) => {
+                      const newProds = localProfile.products.map(p => p.id === product.id ? {...p, price: Number(e.target.value)} : p);
+                      setLocalProfile({...localProfile, products: newProds});
+                    }} />
+                    <span className="text-xs font-bold text-gray-400">{localProfile.currency}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
+                {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
+                حفظ التغييرات
+              </button>
+            </div>
+          </div>
+        );
+
+      case DashboardTab.CUSTOMIZE:
+        return (
+          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-4 pb-32">
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border">
+              <h3 className="text-xl font-black mb-8 text-[#0D2B4D] flex items-center gap-3"><Palette className="text-[#00D1FF]" /> تخصيص هوية المتجر</h3>
+              <div className="space-y-6">
+                <div className="flex flex-col md:flex-row gap-8 items-center">
+                  <div className="w-32 h-32 rounded-[32px] overflow-hidden border-4 border-gray-50 bg-gray-50 shrink-0">
+                    <img src={localProfile.logo} className="w-full h-full object-cover" alt="Logo" />
+                  </div>
+                  <div className="flex-1 w-full space-y-2">
+                    <label className="text-xs font-bold text-gray-400">رابط الشعار</label>
+                    <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400">اسم المتجر</label>
+                    <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.name} onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400">اسم المالك</label>
+                    <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.ownerName} onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400">النبذة التعريفية (Bio)</label>
+                  <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-32 resize-none" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />
+                </div>
+                <div className="pt-6 border-t">
+                  <h4 className="font-bold mb-4">روابط التواصل الاجتماعي</h4>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="relative">
+                      <Instagram size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-500" />
+                      <input className="w-full pl-12 pr-5 py-3 rounded-2xl border" placeholder="إنستقرام" value={localProfile.socialLinks.instagram || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, instagram: e.target.value}})} />
+                    </div>
+                    <div className="relative">
+                      <Twitter size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400" />
+                      <input className="w-full pl-12 pr-5 py-3 rounded-2xl border" placeholder="تويتر" value={localProfile.socialLinks.twitter || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, twitter: e.target.value}})} />
+                    </div>
+                    <div className="relative">
+                      <Facebook size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-700" />
+                      <input className="w-full pl-12 pr-5 py-3 rounded-2xl border" placeholder="فيسبوك" value={localProfile.socialLinks.facebook || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, facebook: e.target.value}})} />
+                    </div>
+                    <div className="relative">
+                      <MessageCircle size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500" />
+                      <input className="w-full pl-12 pr-5 py-3 rounded-2xl border" placeholder="واتساب" value={localProfile.socialLinks.whatsapp || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, whatsapp: e.target.value}})} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
+                {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
+                حفظ الهوية
+              </button>
+            </div>
+          </div>
+        );
+
+      case DashboardTab.SETTINGS:
+        return (
+          <div className="max-w-3xl space-y-6 animate-in slide-in-from-bottom-4 pb-20">
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border">
+               <h3 className="text-xl font-bold mb-8 text-[#0D2B4D]">إعدادات وسياسات المتجر</h3>
+               <div className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400">عملة العرض</label>
+                    <select className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none" value={localProfile.currency} onChange={(e) => setLocalProfile({...localProfile, currency: e.target.value})}>
+                      <option value="SAR">ريال سعودي (SAR)</option><option value="AED">درهم إماراتي (AED)</option><option value="USD">دولار أمريكي (USD)</option>
+                    </select>
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400">سياسة الارجاع</label>
+                    <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-24" value={localProfile.returnPolicy} onChange={(e) => setLocalProfile({...localProfile, returnPolicy: e.target.value})} />
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400">سياسة الشحن</label>
+                    <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-24" value={localProfile.deliveryPolicy} onChange={(e) => setLocalProfile({...localProfile, deliveryPolicy: e.target.value})} />
+                 </div>
+               </div>
+            </div>
+            <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
+                {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
+                حفظ الإعدادات
+              </button>
+            </div>
+            <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 border border-red-100 hover:bg-red-100 transition-colors"><LogOut size={22} /> تسجيل الخروج</button>
           </div>
         );
 
