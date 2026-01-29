@@ -2,12 +2,31 @@
 import { neon } from '@neondatabase/serverless';
 
 /**
- * رابط الاتصال بقاعدة بيانات Neon المأخوذ من الصورة المقدمة.
+ * رابط الاتصال بقاعدة بيانات Neon.
+ * تم وضع الرابط الذي قدمته كقيمة افتراضية لضمان عمل التطبيق مباشرة.
  */
 const DEFAULT_DATABASE_URL = 'postgresql://neondb_owner:npg_J8QlGLHc7fjv@ep-rapid-hall-aebmrm4k-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || DEFAULT_DATABASE_URL;
+// دالة لجلب متغير البيئة بشكل آمن في المتصفح
+const getEnv = (key: string): string | undefined => {
+  try {
+    // محاولة الوصول لـ process.env (تعمل في بعض البيئات مثل Vite أو عبر Polyfills)
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key];
+    }
+  } catch (e) {
+    // تجنب الانهيار في حال عدم وجود الكائن
+  }
+  return undefined;
+};
 
+const DATABASE_URL = getEnv('DATABASE_URL') || getEnv('NETLIFY_DATABASE_URL') || DEFAULT_DATABASE_URL;
+
+/**
+ * تهيئة كائن الاتصال. 
+ * نستخدم "proxy" أو "lazy initialization" إذا كان ذلك ممكناً، 
+ * ولكن هنا سنقوم بالتهيئة المباشرة مع التأكد من وجود الرابط.
+ */
 export const sql = neon(DATABASE_URL);
 
 export const initTables = async () => {
@@ -39,7 +58,7 @@ export const initTables = async () => {
       )
     `;
 
-    // جدول الرسائل (بديل Firebase)
+    // جدول الرسائل
     await sql`
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -51,9 +70,10 @@ export const initTables = async () => {
       )
     `;
 
-    console.log('Neon Database Initialized');
+    console.log('Neon Database Initialized Successfully');
   } catch (error) {
     console.error('Neon Init Error:', error);
+    // لا نقوم بعمل throw هنا للسماح لـ App.tsx بالتعامل مع الخطأ وعرض واجهة مستخدم
     throw error;
   }
 };

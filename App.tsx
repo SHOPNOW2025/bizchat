@@ -17,6 +17,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const bootstrap = async () => {
       try {
+        setLoading(true);
         // محاولة تهيئة قاعدة البيانات
         await initTables();
         
@@ -41,20 +42,18 @@ const App: React.FC = () => {
         
         const savedUser = localStorage.getItem('bazchat_user');
         if (savedUser) {
-          setUser(JSON.parse(savedUser));
+          try {
+            setUser(JSON.parse(savedUser));
+          } catch (e) {
+            localStorage.removeItem('bazchat_user');
+          }
         }
         
         await handleHashChange();
         setLoading(false);
       } catch (e: any) {
         console.error("Bootstrap failed:", e);
-        
-        let errorMsg = "فشل الاتصال بقاعدة البيانات. يرجى التحقق من إعدادات DATABASE_URL.";
-        if (e.message?.includes('DATABASE_URL')) {
-          errorMsg = "رابط قاعدة البيانات (DATABASE_URL) مفقود. يرجى إعداده في لوحة تحكم Vercel/Netlify.";
-        }
-        
-        setError(errorMsg);
+        setError("حدث خطأ أثناء تحميل التطبيق. يرجى التأكد من اتصال الإنترنت وإعدادات قاعدة البيانات.");
         setLoading(false);
       }
     };
@@ -123,27 +122,17 @@ const App: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-center">
-        <div className="bg-white p-10 rounded-[40px] shadow-2xl border border-red-50 max-w-md animate-in zoom-in-95 duration-500">
-          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
-             <span className="text-4xl">⚠️</span>
-          </div>
-          <h2 className="text-2xl font-black text-[#0D2B4D] mb-4">خطأ في الإعدادات</h2>
-          <p className="text-gray-500 mb-8 leading-relaxed text-sm">{error}</p>
-          <div className="space-y-3">
-            <button 
-              onClick={() => window.location.reload()} 
-              className="w-full bg-[#0D2B4D] text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-navy-900/20 hover:bg-black transition-all"
-            >
-              إعادة المحاولة
-            </button>
-            <button 
-              onClick={() => window.location.hash = '#/'} 
-              className="w-full bg-gray-100 text-gray-600 px-8 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
-            >
-              الرجوع للرئيسية
-            </button>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-center font-tajawal">
+        <div className="bg-white p-10 rounded-[40px] shadow-2xl border border-red-50 max-w-md">
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500 text-3xl">⚠️</div>
+          <h2 className="text-2xl font-black text-[#0D2B4D] mb-4">عذراً، حدث خطأ</h2>
+          <p className="text-gray-500 mb-8 text-sm leading-relaxed">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="w-full bg-[#0D2B4D] text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-navy-900/20 hover:bg-black transition-all"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       </div>
     );
@@ -162,9 +151,9 @@ const App: React.FC = () => {
       case AppView.PUBLIC_CHAT:
         return publicProfile ? <PublicChatPage profile={publicProfile} /> : (
           <div className="min-h-screen flex items-center justify-center p-10 text-center">
-             <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 max-w-sm">
-                <h3 className="text-xl font-bold mb-2">عذراً، الصفحة غير موجودة</h3>
-                <p className="text-gray-500 mb-6 text-sm">قد يكون الرابط غير صحيح أو تم إيقاف المتجر.</p>
+             <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 max-w-sm font-tajawal">
+                <h3 className="text-xl font-bold mb-2 text-[#0D2B4D]">الصفحة غير متوفرة</h3>
+                <p className="text-gray-500 mb-6 text-sm">قد يكون الرابط غير صحيح أو تم إغلاق المتجر.</p>
                 <button onClick={() => window.location.hash = '#/'} className="bg-[#00D1FF] text-white px-6 py-2 rounded-xl font-bold">العودة للرئيسية</button>
              </div>
           </div>
