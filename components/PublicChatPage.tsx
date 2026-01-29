@@ -22,9 +22,9 @@ interface PublicChatPageProps {
   profile: BusinessProfile;
 }
 
-// روابط الأصوات
+// روابط الأصوات - تم اختيار نغمة استقبال أكثر حدة ووضوحاً
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3';
+const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3'; // نغمة حادة ومسموعة
 
 const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -43,6 +43,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
   const playSound = (url: string) => {
     const audio = new Audio(url);
+    audio.volume = 1.0; // التأكد من أن الصوت في أعلى مستوياته
     audio.play().catch(e => console.debug("Audio play blocked by browser"));
   };
 
