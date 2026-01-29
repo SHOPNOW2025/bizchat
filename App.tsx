@@ -17,6 +17,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const bootstrap = async () => {
       try {
+        // محاولة تهيئة قاعدة البيانات
         await initTables();
         
         const handleHashChange = async () => {
@@ -45,9 +46,15 @@ const App: React.FC = () => {
         
         await handleHashChange();
         setLoading(false);
-      } catch (e) {
-        console.error("Bootstrap failed", e);
-        setError("فشل الاتصال بقاعدة البيانات. يرجى التحقق من اتصال الإنترنت أو إعدادات Neon.");
+      } catch (e: any) {
+        console.error("Bootstrap failed:", e);
+        
+        let errorMsg = "فشل الاتصال بقاعدة البيانات. يرجى التحقق من إعدادات DATABASE_URL.";
+        if (e.message?.includes('DATABASE_URL')) {
+          errorMsg = "رابط قاعدة البيانات (DATABASE_URL) مفقود. يرجى إعداده في لوحة تحكم Vercel/Netlify.";
+        }
+        
+        setError(errorMsg);
         setLoading(false);
       }
     };
@@ -98,9 +105,17 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="flex flex-col items-center gap-4">
-          <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-20 animate-pulse" alt="Logo" />
-          <p className="text-[#0D2B4D] font-bold">جاري الاتصال بقاعدة البيانات...</p>
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-24 animate-pulse" alt="Logo" />
+            <div className="absolute inset-0 bg-cyan-400/20 blur-xl rounded-full animate-ping"></div>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[#0D2B4D] font-bold text-lg">بازشات - جاري التحميل</p>
+            <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-[#00D1FF] w-1/2 animate-[loading_1.5s_ease-in-out_infinite]"></div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -109,16 +124,26 @@ const App: React.FC = () => {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-center">
-        <div className="bg-white p-8 rounded-3xl shadow-xl border border-red-100 max-w-md">
-          <div className="text-red-500 mb-4 text-4xl">⚠️</div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">خطأ في الاتصال</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="bg-[#00D1FF] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#00B8E0] transition-all"
-          >
-            إعادة المحاولة
-          </button>
+        <div className="bg-white p-10 rounded-[40px] shadow-2xl border border-red-50 max-w-md animate-in zoom-in-95 duration-500">
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
+             <span className="text-4xl">⚠️</span>
+          </div>
+          <h2 className="text-2xl font-black text-[#0D2B4D] mb-4">خطأ في الإعدادات</h2>
+          <p className="text-gray-500 mb-8 leading-relaxed text-sm">{error}</p>
+          <div className="space-y-3">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="w-full bg-[#0D2B4D] text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-navy-900/20 hover:bg-black transition-all"
+            >
+              إعادة المحاولة
+            </button>
+            <button 
+              onClick={() => window.location.hash = '#/'} 
+              className="w-full bg-gray-100 text-gray-600 px-8 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
+            >
+              الرجوع للرئيسية
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -135,7 +160,15 @@ const App: React.FC = () => {
       case AppView.DASHBOARD:
         return user ? <Dashboard user={user} setUser={setUser} onLogout={handleLogout} /> : <Auth type="login" onAuth={handleAuthSuccess} onToggle={() => window.location.hash = '#/signup'} />;
       case AppView.PUBLIC_CHAT:
-        return publicProfile ? <PublicChatPage profile={publicProfile} /> : <div className="p-10 text-center">الصفحة غير موجودة</div>;
+        return publicProfile ? <PublicChatPage profile={publicProfile} /> : (
+          <div className="min-h-screen flex items-center justify-center p-10 text-center">
+             <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 max-w-sm">
+                <h3 className="text-xl font-bold mb-2">عذراً، الصفحة غير موجودة</h3>
+                <p className="text-gray-500 mb-6 text-sm">قد يكون الرابط غير صحيح أو تم إيقاف المتجر.</p>
+                <button onClick={() => window.location.hash = '#/'} className="bg-[#00D1FF] text-white px-6 py-2 rounded-xl font-bold">العودة للرئيسية</button>
+             </div>
+          </div>
+        );
       default:
         return <LandingPage onNavigate={(v) => window.location.hash = v === AppView.LOGIN ? '#/login' : '#/signup'} />;
     }
@@ -143,6 +176,12 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen">
+      <style>{`
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+      `}</style>
       {renderView()}
     </div>
   );
