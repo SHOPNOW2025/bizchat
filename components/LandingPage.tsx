@@ -59,7 +59,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </button>
           </div>
           <div className="mt-16 rounded-3xl overflow-hidden shadow-2xl border-4 border-white">
-            <img src="https://picsum.photos/seed/dashboard/1200/600" alt="Bazchat Dashboard Preview" className="w-full h-auto" />
+            <img src="https://i.ibb.co/Q7pT6bqt/image.png" alt="Bazchat Dashboard Preview" className="w-full h-auto" />
           </div>
         </div>
       </section>
