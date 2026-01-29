@@ -34,7 +34,6 @@ export const initTables = async () => {
       )
     `;
 
-    // Try to add missing columns for backward compatibility
     try {
       await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`;
     } catch (e) {}
@@ -43,7 +42,6 @@ export const initTables = async () => {
       await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`;
     } catch (e) {}
     
-    // Updated table for messaging system with customer info
     await sql`
       CREATE TABLE IF NOT EXISTS chat_sessions (
         id TEXT PRIMARY KEY,
@@ -55,18 +53,27 @@ export const initTables = async () => {
       )
     `;
 
-    try {
-      await sql`ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS customer_name TEXT`;
-      await sql`ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS customer_phone TEXT`;
-    } catch (e) {}
-
     await sql`
       CREATE TABLE IF NOT EXISTS chat_messages (
         id SERIAL PRIMARY KEY,
         session_id TEXT NOT NULL,
         sender TEXT NOT NULL,
         text TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    // جدول المكالمات والإشارات (Signaling)
+    await sql`
+      CREATE TABLE IF NOT EXISTS voice_calls (
+        session_id TEXT PRIMARY KEY,
+        status TEXT DEFAULT 'idle', -- idle, calling, connected, ended
+        caller_role TEXT, -- owner or customer
+        offer JSONB,
+        answer JSONB,
+        ice_candidates JSONB DEFAULT '[]',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
 
