@@ -35,7 +35,9 @@ import {
   Twitter,
   Facebook,
   MapPin,
-  Phone
+  Phone,
+  Camera,
+  Loader2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -53,6 +55,8 @@ interface ChatSession {
   lastActive?: any;
   unreadCount?: number;
 }
+
+const IMGBB_API_KEY = 'a16fdd9aead1214d64e435c9b83a0c2e';
 
 const STATS_DATA = [
   { name: 'السبت', views: 400, chats: 240 },
@@ -88,6 +92,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [showSoundSettings, setShowSoundSettings] = useState(false);
   const [selectedSoundId, setSelectedSoundId] = useState(localStorage.getItem('merchant_sound_id') || 'standard');
   const [totalUnread, setTotalUnread] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
   const [newFAQ, setNewFAQ] = useState({ question: '', answer: '' });
@@ -110,6 +115,50 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const isInitialLoad = useRef<boolean>(true);
 
   useEffect(() => { setLocalProfile(user.businessProfile); }, [user.id]);
+
+  const uploadToImgBB = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = await response.json();
+    if (json.success) {
+      return json.data.url;
+    }
+    throw new Error('Upload failed');
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'chat') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const imageUrl = await uploadToImgBB(file);
+      if (type === 'logo') {
+        setLocalProfile(prev => ({ ...prev, logo: imageUrl }));
+      } else if (type === 'chat' && selectedSession) {
+        await handleSendImage(imageUrl);
+      }
+    } catch (error) {
+      alert('فشل رفع الصورة، يرجى المحاولة مرة أخرى');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleSendImage = async (imageUrl: string) => {
+    if (!selectedSession) return;
+    const txt = `IMAGE:${imageUrl}`;
+    playSystemSound(SEND_SOUND); 
+    try {
+      await sql`UPDATE chat_sessions SET last_text = 'صورة', last_active = NOW() WHERE id = ${selectedSession}`;
+      await sql`INSERT INTO chat_messages (session_id, sender, text, is_read) VALUES (${selectedSession}, 'owner', ${txt}, TRUE)`;
+      setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'owner', text: txt, timestamp: new Date() }]);
+    } catch (e) {}
+  };
 
   const playSystemSound = (url: string) => {
     if (!url) return;
@@ -459,13 +508,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     {chatMessages.map(m => (
                       <div key={m.id} className={`flex ${m.sender==='owner'?'justify-start':'justify-end'}`}>
                         <div className={`max-w-[80%] p-5 rounded-[28px] text-sm font-medium shadow-sm ${m.sender==='owner'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border rounded-tl-none text-gray-800'}`}>
-                          {m.text}<div className="text-[9px] mt-2 opacity-60 text-left font-black">{m.timestamp?.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+                          {m.text.startsWith('IMAGE:') ? (
+                            <img src={m.text.replace('IMAGE:', '')} className="rounded-2xl max-w-full max-h-[300px] object-cover cursor-pointer hover:opacity-90" onClick={() => window.open(m.text.replace('IMAGE:', ''), '_blank')} />
+                          ) : (
+                            <p>{m.text}</p>
+                          )}
+                          <div className="text-[9px] mt-2 opacity-60 text-left font-black">{m.timestamp?.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
                         </div>
                       </div>
                     ))}
                     <div ref={messagesEndRef} />
                   </div>
-                  <div className="p-6 border-t flex gap-3">
+                  <div className="p-6 border-t flex gap-3 items-center">
+                    <label className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-400 rounded-2xl cursor-pointer hover:bg-gray-200 transition-colors shrink-0">
+                      {isUploading ? <Loader2 size={24} className="animate-spin text-[#00D1FF]" /> : <Camera size={24} />}
+                      <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'chat')} disabled={isUploading} />
+                    </label>
                     <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyPress={e=>e.key==='Enter'&&handleReply()} placeholder="اكتب ردك هنا..." className="flex-1 px-6 py-4 rounded-3xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] font-bold" />
                     <button onClick={handleReply} className="w-14 h-14 bg-[#00D1FF] text-white rounded-3xl flex items-center justify-center shadow-xl shadow-cyan-500/20 hover:scale-105 transition-transform"><Send size={24} /></button>
                   </div>
@@ -595,7 +653,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
               <h3 className="text-2xl font-black mb-10 text-[#0D2B4D] flex items-center gap-4"><Palette className="text-[#00D1FF]" /> الهوية والبيانات</h3>
               <div className="space-y-8">
                 <div className="flex flex-col md:flex-row gap-10 items-center bg-gray-50/50 p-8 rounded-[40px]">
-                  <div className="w-40 h-40 rounded-[45px] overflow-hidden border-4 border-white shadow-xl bg-white shrink-0 p-1 shadow-md"><img src={localProfile.logo} className="w-full h-full object-cover rounded-[40px]" alt="Logo" /></div>
+                  <div className="w-40 h-40 rounded-[45px] overflow-hidden border-4 border-white shadow-xl bg-white shrink-0 p-1 shadow-md relative group">
+                    <img src={localProfile.logo} className="w-full h-full object-cover rounded-[40px]" alt="Logo" />
+                    <label className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-[40px]">
+                      {isUploading ? <Loader2 className="animate-spin" /> : <Camera size={32} />}
+                      <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo')} disabled={isUploading} />
+                    </label>
+                  </div>
                   <div className="flex-1 w-full space-y-3 text-right">
                     <label className="text-xs font-black text-gray-400 tracking-widest uppercase">رابط شعار المتجر</label>
                     <input className="w-full px-6 py-4 rounded-2xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />

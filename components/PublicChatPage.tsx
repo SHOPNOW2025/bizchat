@@ -22,13 +22,16 @@ import {
   Twitter,
   Facebook,
   MapPin,
-  Phone
+  Phone,
+  Camera,
+  Loader2
 } from 'lucide-react';
 
 interface PublicChatPageProps {
   profile: BusinessProfile;
 }
 
+const IMGBB_API_KEY = 'a16fdd9aead1214d64e435c9b83a0c2e';
 const RING_SOUND = 'https://assets.mixkit.co/active_storage/sfx/1344/1344-preview.mp3';
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
 const HANGUP_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2355/2355-preview.mp3';
@@ -44,6 +47,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [showProfileInfo, setShowProfileInfo] = useState(false);
   const [isBotThinking, setIsBotThinking] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<'none' | 'name' | 'phone' | 'done'>('none');
+  const [isUploading, setIsUploading] = useState(false);
 
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
@@ -93,6 +97,39 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     };
     initSession();
   }, [profile.id]);
+
+  const uploadToImgBB = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = await response.json();
+    if (json.success) {
+      return json.data.url;
+    }
+    throw new Error('Upload failed');
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (onboardingStep !== 'done') {
+      alert("يرجى إكمال بياناتك قبل إرسال الصور");
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const imageUrl = await uploadToImgBB(file);
+      await handleSend(`IMAGE:${imageUrl}`);
+    } catch (error) {
+      alert('فشل رفع الصورة، يرجى المحاولة مرة أخرى');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const triggerOnboardingBot = async (step: 'name' | 'phone') => {
     setIsBotThinking(true);
@@ -252,7 +289,8 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       }
 
       // إرسال رسالة عادية
-      await sql`UPDATE chat_sessions SET last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
+      const lastText = txt.startsWith('IMAGE:') ? 'صورة' : txt;
+      await sql`UPDATE chat_sessions SET last_text = ${lastText}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
       await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
       setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
     } catch (e) {
@@ -427,7 +465,11 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         {messages.map((m, idx) => (
           <div key={m.id || idx} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
             <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
-              <p className="leading-relaxed">{m.text}</p>
+              {m.text.startsWith('IMAGE:') ? (
+                <img src={m.text.replace('IMAGE:', '')} className="rounded-2xl max-w-full max-h-[300px] object-cover cursor-pointer hover:opacity-90" onClick={() => window.open(m.text.replace('IMAGE:', ''), '_blank')} />
+              ) : (
+                <p className="leading-relaxed">{m.text}</p>
+              )}
               <div className="text-[10px] mt-2 opacity-50 text-left font-black tracking-tighter uppercase">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
             </div>
           </div>
@@ -464,6 +506,10 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       {/* Input Footer */}
       <footer className="p-4 bg-white border-t safe-area-bottom shadow-2xl">
         <div className="flex items-center gap-3">
+          <label className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-400 rounded-2xl cursor-pointer hover:bg-gray-200 transition-colors shrink-0">
+            {isUploading ? <Loader2 size={24} className="animate-spin text-[#00D1FF]" /> : <Camera size={24} />}
+            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={isUploading} />
+          </label>
           <div className="flex-1 relative">
             <input 
               type={onboardingStep === 'phone' ? 'tel' : 'text'}
@@ -486,7 +532,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           </div>
           <button 
             onClick={() => handleSend()} 
-            disabled={!inputValue.trim() || isBotThinking} 
+            disabled={!inputValue.trim() || isBotThinking || isUploading} 
             className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl shadow-blue-500/20 active:scale-90 transition-all disabled:opacity-50"
           >
             <Send size={26} className="-rotate-45" />
