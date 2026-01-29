@@ -1,0 +1,8 @@
+{
+  "name": "Bazchat - بازشات",
+  "description": "منصة احترافية لإنشاء صفحات دردشة مخصصة للأعمال والمنشآت مع متجر منتجات مدمج ولوحة تحكم شاملة.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
