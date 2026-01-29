@@ -24,10 +24,9 @@ interface PublicChatPageProps {
   profile: BusinessProfile;
 }
 
-// خيارات الأصوات المتاحة للعميل
+// خيارات الأصوات المتاحة للعميل - تم إزالة النغمة الحادة
 const SOUND_OPTIONS = [
   { id: 'standard', name: 'قياسي', url: 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3' },
-  { id: 'alert', name: 'تنبيه حاد', url: 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3' },
   { id: 'soft', name: 'نغمة هادئة', url: 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3' },
   { id: 'mute', name: 'كتم الصوت', url: '' },
 ];

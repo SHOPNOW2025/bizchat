@@ -62,10 +62,8 @@ const STATS_DATA = [
   { name: 'الجمعة', views: 349, chats: 430 },
 ];
 
-// خيارات الأصوات المتاحة
 const SOUND_OPTIONS = [
   { id: 'standard', name: 'قياسي', url: 'https://assets.mixkit.co/active_storage/sfx/2359/2359-preview.mp3' },
-  { id: 'alert', name: 'تنبيه حاد', url: 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3' },
   { id: 'soft', name: 'نغمة هادئة', url: 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3' },
   { id: 'mute', name: 'كتم الصوت', url: '' },
 ];
@@ -88,7 +86,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevMessagesCount = useRef<number | null>(null);
+  
+  // Ref لمراقبة آخر تحديث عالمي للرسائل لتجنب تكرار الصوت
+  const lastGlobalActiveRef = useRef<number>(Date.now());
+  const isInitialLoad = useRef<boolean>(true);
+
   const [localProfile, setLocalProfile] = useState<BusinessProfile>(user.businessProfile);
 
   useEffect(() => {
@@ -99,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     if (!url) return;
     const audio = new Audio(url);
     audio.volume = 1.0; 
-    audio.play().catch(e => console.debug("Audio play blocked by browser"));
+    audio.play().catch(e => console.debug("Audio play blocked by browser. Interaction required."));
   };
 
   const handleReceiveSound = () => {
@@ -116,29 +118,47 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     if (sound && sound.url) playSound(sound.url);
   };
 
-  // Polling for Chat Sessions
+  // Polling for Chat Sessions (Global Monitor for all messages)
   useEffect(() => {
-    if (activeTab === DashboardTab.MESSAGES || activeTab === DashboardTab.OVERVIEW) {
-      const fetchSessions = async () => {
-        try {
-          const sessions = await sql`
-            SELECT id, customer_name as "customerName", customer_phone as "customerPhone", last_text as "lastText", last_active as "lastActive" 
-            FROM chat_sessions 
-            WHERE profile_id = ${localProfile.id} 
-            ORDER BY last_active DESC
-          `;
-          setActiveSessions(sessions as any);
-        } catch (e) {
-          console.error("Error fetching sessions", e);
+    const fetchSessions = async () => {
+      try {
+        const sessions = await sql`
+          SELECT id, customer_name as "customerName", customer_phone as "customerPhone", last_text as "lastText", last_active as "lastActive" 
+          FROM chat_sessions 
+          WHERE profile_id = ${localProfile.id} 
+          ORDER BY last_active DESC
+        `;
+        
+        const sessionsData = sessions as ChatSession[];
+        setActiveSessions(sessionsData);
+
+        // منطق المراقبة العالمية للأصوات
+        if (sessionsData.length > 0) {
+          const mostRecent = sessionsData[0];
+          const mostRecentTime = new Date(mostRecent.lastActive).getTime();
+
+          if (isInitialLoad.current) {
+            lastGlobalActiveRef.current = mostRecentTime;
+            isInitialLoad.current = false;
+          } else if (mostRecentTime > lastGlobalActiveRef.current) {
+            // تحقق إذا كانت الرسالة من العميل (لا تبدأ بكلمة "أنت:")
+            if (mostRecent.lastText && !mostRecent.lastText.startsWith('أنت:')) {
+              handleReceiveSound();
+            }
+            lastGlobalActiveRef.current = mostRecentTime;
+          }
         }
-      };
+      } catch (e) {
+        console.error("Error fetching sessions", e);
+      }
+    };
 
-      fetchSessions();
-      const interval = setInterval(fetchSessions, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, localProfile.id]);
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 5000); // تحديث كل 5 ثوانٍ
+    return () => clearInterval(interval);
+  }, [localProfile.id, selectedSoundId]);
 
+  // Polling for specific chat messages
   useEffect(() => {
     if (selectedSession) {
       const fetchMessages = async () => {
@@ -150,21 +170,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             ORDER BY timestamp ASC
           `;
           
-          const newMessages = msgs.map(m => ({
+          setChatMessages(msgs.map(m => ({
             ...m,
             timestamp: new Date(m.timestamp)
-          })) as Message[];
-
-          // منطق التنبيه الصوتي عند استقبال رسالة جديدة من العميل
-          if (prevMessagesCount.current !== null && newMessages.length > prevMessagesCount.current) {
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg.sender === 'customer') {
-              handleReceiveSound();
-            }
-          }
-          
-          prevMessagesCount.current = newMessages.length;
-          setChatMessages(newMessages);
+          })) as Message[]);
         } catch (e) {
           console.error("Error fetching messages", e);
         }
@@ -172,12 +181,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
       fetchMessages();
       const interval = setInterval(fetchMessages, 3000);
-      return () => {
-        clearInterval(interval);
-        prevMessagesCount.current = null; 
-      };
+      return () => clearInterval(interval);
     }
-  }, [selectedSession, selectedSoundId]);
+  }, [selectedSession]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -284,7 +290,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const handleSelectSession = (sessionId: string) => {
     setSelectedSession(sessionId);
     setIsMobileChatOpen(true);
-    prevMessagesCount.current = null; 
   };
 
   const handleReply = async () => {
@@ -314,7 +319,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       };
       
       setChatMessages(prev => [...prev, newMsg]);
-      prevMessagesCount.current = (prevMessagesCount.current || 0) + 1;
+      // تحديث المرجع المحلي لمنع تكرار الصوت عند إرسال التاجر لرد
+      lastGlobalActiveRef.current = Date.now();
     } catch (e) {
       console.error("Error sending reply", e);
     }
