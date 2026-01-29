@@ -30,7 +30,12 @@ import {
   ChevronLeft,
   Bot,
   Menu,
-  X
+  X,
+  Instagram,
+  Twitter,
+  Facebook,
+  MapPin,
+  Phone
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -308,6 +313,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           description = ${localProfile.description || ''}, 
           phone = ${localProfile.phone}, 
           logo = ${localProfile.logo}, 
+          location_url = ${localProfile.locationUrl || ''},
           social_links = ${JSON.stringify(localProfile.socialLinks)}, 
           products = ${JSON.stringify(localProfile.products)}, 
           faqs = ${JSON.stringify(localProfile.faqs || [])},
@@ -319,7 +325,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       setUser({ ...user, businessProfile: { ...localProfile, slug: cleanSlug } });
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 3000);
-    } catch (e) { alert("حدث خطأ أثناء حفظ البيانات"); } 
+    } catch (e) { 
+      console.error(e);
+      alert("حدث خطأ أثناء حفظ البيانات"); 
+    } 
     finally { setIsSaving(false); }
   };
 
@@ -580,10 +589,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <div className="w-full md:w-auto bg-gray-100 px-6 py-5 rounded-3xl font-black text-gray-400 ltr">bazchat.com/#/chat/</div>
                   <input className="w-full flex-1 px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black ltr text-xl text-[#0D2B4D]" value={localProfile.slug} onChange={(e) => setLocalProfile({...localProfile, slug: e.target.value.toLowerCase().replace(/[^\w-]/g, '')})} />
                </div>
-               <p className="text-sm text-gray-400 mt-4 font-bold flex items-center gap-2"><ImageIcon size={14} /> رابط متجرك المباشر لعملائك ومتابعيك</p>
             </div>
+
             <div className="bg-white p-10 rounded-[50px] shadow-sm border">
-              <h3 className="text-2xl font-black mb-10 text-[#0D2B4D] flex items-center gap-4"><Palette className="text-[#00D1FF]" /> الهوية البصرية</h3>
+              <h3 className="text-2xl font-black mb-10 text-[#0D2B4D] flex items-center gap-4"><Palette className="text-[#00D1FF]" /> الهوية والبيانات</h3>
               <div className="space-y-8">
                 <div className="flex flex-col md:flex-row gap-10 items-center bg-gray-50/50 p-8 rounded-[40px]">
                   <div className="w-40 h-40 rounded-[45px] overflow-hidden border-4 border-white shadow-xl bg-white shrink-0 p-1 shadow-md"><img src={localProfile.logo} className="w-full h-full object-cover rounded-[40px]" alt="Logo" /></div>
@@ -592,6 +601,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <input className="w-full px-6 py-4 rounded-2xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />
                   </div>
                 </div>
+
                 <div className="grid md:grid-cols-2 gap-8 text-right">
                   <div className="space-y-3">
                     <label className="text-xs font-black text-gray-400 tracking-widest uppercase">اسم المنشأة</label>
@@ -602,6 +612,46 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <input className="w-full px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={localProfile.ownerName} onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})} />
                   </div>
                 </div>
+
+                <div className="grid md:grid-cols-2 gap-8 text-right">
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">رقم الهاتف العام</label>
+                    <div className="flex items-center bg-gray-50 border rounded-3xl px-5">
+                      <Phone className="text-gray-400 shrink-0" size={20} />
+                      <input className="w-full px-4 py-5 bg-transparent outline-none font-black text-lg" value={localProfile.phone} onChange={(e) => setLocalProfile({...localProfile, phone: e.target.value})} placeholder="أدخل رقم الهاتف للعملاء" />
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">رابط الموقع (Google Maps)</label>
+                    <div className="flex items-center bg-gray-50 border rounded-3xl px-5">
+                      <MapPin className="text-gray-400 shrink-0" size={20} />
+                      <input className="w-full px-4 py-5 bg-transparent outline-none font-black text-lg" value={localProfile.locationUrl || ''} onChange={(e) => setLocalProfile({...localProfile, locationUrl: e.target.value})} placeholder="رابط خرائط جوجل" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 text-right">
+                  <label className="text-xs font-black text-gray-400 tracking-widest uppercase">روابط التواصل الاجتماعي</label>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
+                       <Instagram size={20} className="text-pink-500 shrink-0" />
+                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.instagram || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, instagram: e.target.value}})} placeholder="رابط إنستقرام" />
+                    </div>
+                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
+                       <Twitter size={20} className="text-blue-400 shrink-0" />
+                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.twitter || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, twitter: e.target.value}})} placeholder="رابط تويتر" />
+                    </div>
+                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
+                       <Facebook size={20} className="text-blue-600 shrink-0" />
+                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.facebook || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, facebook: e.target.value}})} placeholder="رابط فيسبوك" />
+                    </div>
+                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
+                       <div className="w-5 h-5 bg-green-500 rounded flex items-center justify-center text-white font-bold text-[8px] shrink-0">W</div>
+                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.whatsapp || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, whatsapp: e.target.value}})} placeholder="رابط واتساب" />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-3 text-right">
                   <label className="text-xs font-black text-gray-400 tracking-widest uppercase">النبذة التعريفية</label>
                   <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold h-40 resize-none leading-relaxed" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />

@@ -47,6 +47,7 @@ export interface BusinessProfile {
   phone: string;
   countryCode: string;
   logo: string;
+  locationUrl?: string;
   socialLinks: SocialLinks;
   products: Product[];
   faqs: FAQ[];

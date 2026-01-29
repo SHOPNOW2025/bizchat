@@ -26,6 +26,7 @@ export const initTables = async () => {
         phone TEXT,
         country_code TEXT,
         logo TEXT,
+        location_url TEXT,
         social_links JSONB,
         products JSONB,
         faqs JSONB DEFAULT '[]',
@@ -45,6 +46,10 @@ export const initTables = async () => {
 
     try {
       await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS faqs JSONB DEFAULT '[]'`;
+    } catch (e) {}
+
+    try {
+      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS location_url TEXT`;
     } catch (e) {}
     
     await sql`

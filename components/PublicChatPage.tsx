@@ -17,7 +17,12 @@ import {
   Package,
   CheckCircle2,
   User as UserIcon,
-  ShieldCheck
+  ShieldCheck,
+  Instagram,
+  Twitter,
+  Facebook,
+  MapPin,
+  Phone
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -36,6 +41,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [callDuration, setCallDuration] = useState(0);
   const [currentCallId, setCurrentCallId] = useState<string | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [showProfileInfo, setShowProfileInfo] = useState(false);
   const [isBotThinking, setIsBotThinking] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<'none' | 'name' | 'phone' | 'done'>('none');
 
@@ -310,6 +316,59 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         </div>
       )}
 
+      {/* Profile Info Modal */}
+      {showProfileInfo && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-in fade-in duration-300">
+           <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-md" onClick={() => setShowProfileInfo(false)}></div>
+           <div className="relative bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl text-center animate-in zoom-in-95">
+              <button onClick={() => setShowProfileInfo(false)} className="absolute top-6 left-6 text-gray-400"><X size={24}/></button>
+              <div className="w-24 h-24 rounded-[32px] border-4 border-[#00D1FF]/20 mx-auto p-1 bg-white mb-6">
+                 <img src={profile.logo} className="w-full h-full object-cover rounded-[24px]" />
+              </div>
+              <h3 className="text-2xl font-black text-[#0D2B4D] mb-1">{profile.name}</h3>
+              <p className="text-sm font-bold text-gray-400 mb-6">{profile.ownerName}</p>
+              
+              <div className="space-y-4 mb-8 text-right">
+                {profile.phone && (
+                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
+                    <div className="w-10 h-10 bg-[#0D2B4D] text-white rounded-xl flex items-center justify-center"><Phone size={20}/></div>
+                    <div className="flex-1">
+                      <p className="text-[10px] text-gray-400 font-black">رقم الهاتف</p>
+                      <a href={`tel:${profile.phone}`} className="font-black text-[#0D2B4D]">{profile.phone}</a>
+                    </div>
+                  </div>
+                )}
+                {profile.locationUrl && (
+                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
+                    <div className="w-10 h-10 bg-green-500 text-white rounded-xl flex items-center justify-center"><MapPin size={20}/></div>
+                    <div className="flex-1">
+                      <p className="text-[10px] text-gray-400 font-black">الموقع</p>
+                      <a href={profile.locationUrl} target="_blank" rel="noreferrer" className="font-black text-[#0D2B4D] truncate block w-40">خرائط جوجل</a>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-center gap-4 border-t pt-8">
+                {profile.socialLinks.instagram && (
+                  <a href={profile.socialLinks.instagram} target="_blank" rel="noreferrer" className="w-12 h-12 bg-pink-50 text-pink-500 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform"><Instagram size={24}/></a>
+                )}
+                {profile.socialLinks.twitter && (
+                  <a href={profile.socialLinks.twitter} target="_blank" rel="noreferrer" className="w-12 h-12 bg-blue-50 text-blue-400 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform"><Twitter size={24}/></a>
+                )}
+                {profile.socialLinks.facebook && (
+                  <a href={profile.socialLinks.facebook} target="_blank" rel="noreferrer" className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform"><Facebook size={24}/></a>
+                )}
+                {profile.socialLinks.whatsapp && (
+                  <a href={profile.socialLinks.whatsapp} target="_blank" rel="noreferrer" className="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform">
+                    <div className="font-black text-lg">W</div>
+                  </a>
+                )}
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Call UI */}
       {callStatus !== 'idle' && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6">
@@ -338,7 +397,12 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       {/* Main Header */}
       <header className="bg-white/80 backdrop-blur-md p-4 flex items-center justify-between border-b shadow-sm sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-white shrink-0 shadow-cyan-100"><img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" /></div>
+          <button 
+            onClick={() => setShowProfileInfo(true)}
+            className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-white shrink-0 shadow-cyan-100 hover:scale-105 transition-transform"
+          >
+            <img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" />
+          </button>
           <div className="overflow-hidden">
             <h1 className="font-black text-base text-[#0D2B4D] truncate">{profile.name}</h1>
             <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Online</span></div>
