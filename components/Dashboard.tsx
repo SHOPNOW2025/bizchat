@@ -99,10 +99,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
-  const remoteStream = useRef<MediaStream | null>(null);
-  const audioContext = useRef<AudioContext | null>(null);
-  const callInterval = useRef<any>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringAudio = useRef<HTMLAudioElement | null>(null);
+  const processedIceCandidates = useRef<Set<string>>(new Set());
 
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -133,20 +132,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     if (sound && sound.url) playSound(sound.url);
   };
 
-  // Call Signaling Loop
+  // Call Signaling & Synchronization
   useEffect(() => {
     const checkCalls = async () => {
       try {
         const calls = await sql`
           SELECT * FROM voice_calls 
           WHERE session_id IN (SELECT id FROM chat_sessions WHERE profile_id = ${localProfile.id})
-          AND status != 'idle' AND status != 'ended'
           ORDER BY updated_at DESC LIMIT 1
         `;
 
         if (calls.length > 0) {
           const call = calls[0];
-          // If customer is calling and we are idle
+
+          // 1. اكتشاف انتهاء المكالمة من الطرف الآخر
+          if (call.status === 'ended' && callStatus !== 'idle') {
+            handleEndCall(false); // إنهاء محلي دون تحديث القاعدة مرة أخرى
+            return;
+          }
+
+          // 2. استقبال مكالمة جديدة
           if (call.caller_role === 'customer' && call.status === 'calling' && callStatus === 'idle') {
             setCallStatus('incoming');
             setActiveCallSessionId(call.session_id);
@@ -154,20 +159,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
               ringAudio.current = new Audio(RING_SOUND);
               ringAudio.current.loop = true;
             }
-            ringAudio.current.play();
+            ringAudio.current.play().catch(() => {});
           } 
-          // If we called and they answered
-          else if (call.caller_role === 'owner' && call.status === 'connected' && callStatus === 'calling') {
-            const remoteAnswer = call.answer;
-            if (remoteAnswer && peerConnection.current && peerConnection.current.signalingState === 'have-local-offer') {
-              await peerConnection.current.setRemoteDescription(new RTCSessionDescription(remoteAnswer));
+
+          // 3. استقبال الإجابة (إذا كنت أنا من اتصلت)
+          if (call.caller_role === 'owner' && call.status === 'connected' && callStatus === 'calling' && call.answer) {
+            if (peerConnection.current && peerConnection.current.signalingState === 'have-local-offer') {
+              await peerConnection.current.setRemoteDescription(new RTCSessionDescription(call.answer));
               setCallStatus('connected');
               if (ringAudio.current) ringAudio.current.pause();
             }
           }
-          // Handle remote hangup
-          else if (call.status === 'ended' && (callStatus === 'connected' || callStatus === 'calling' || callStatus === 'incoming')) {
-            handleEndCall();
+
+          // 4. تبادل ICE Candidates
+          if (callStatus === 'connected' || callStatus === 'calling') {
+            const remoteCandidates = call.caller_role === 'owner' ? call.receiver_candidates : call.caller_candidates;
+            if (remoteCandidates && Array.isArray(remoteCandidates)) {
+              for (const candidateData of remoteCandidates) {
+                const candidateStr = JSON.stringify(candidateData);
+                if (!processedIceCandidates.current.has(candidateStr) && peerConnection.current) {
+                  try {
+                    await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidateData));
+                    processedIceCandidates.current.add(candidateStr);
+                  } catch (e) {
+                    console.error("Error adding ice candidate", e);
+                  }
+                }
+              }
+            }
           }
         }
       } catch (e) {
@@ -175,7 +194,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       }
     };
 
-    const interval = setInterval(checkCalls, 2500);
+    const interval = setInterval(checkCalls, 2000);
     return () => clearInterval(interval);
   }, [localProfile.id, callStatus]);
 
@@ -189,61 +208,87 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     return () => clearInterval(timer);
   }, [callStatus]);
 
-  const setupWebRTC = async () => {
+  const setupWebRTC = async (sessionId: string) => {
+    processedIceCandidates.current.clear();
     peerConnection.current = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
     });
+
+    peerConnection.current.onicecandidate = async (event) => {
+      if (event.candidate) {
+        try {
+          // جلب المرشحين الحاليين وإضافة الجديد
+          const colName = callStatus === 'calling' ? 'caller_candidates' : 'receiver_candidates';
+          await sql`
+            UPDATE voice_calls SET 
+              ${sql(colName)} = ${sql(colName)} || ${JSON.stringify([event.candidate])}::jsonb,
+              updated_at = NOW()
+            WHERE session_id = ${sessionId}
+          `;
+        } catch (e) {
+          console.error("Failed to save ICE candidate", e);
+        }
+      }
+    };
+
+    peerConnection.current.ontrack = (event) => {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = event.streams[0];
+        remoteAudioRef.current.play().catch(e => console.error("Remote audio play failed", e));
+      }
+    };
 
     localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStream.current.getTracks().forEach(track => {
       peerConnection.current?.addTrack(track, localStream.current!);
     });
-
-    peerConnection.current.ontrack = (event) => {
-      remoteStream.current = event.streams[0];
-      const audio = new Audio();
-      audio.srcObject = remoteStream.current;
-      audio.play();
-    };
   };
 
   const handleStartCall = async (sessionId: string) => {
+    if (callStatus !== 'idle') return;
     try {
       setCallStatus('calling');
       setActiveCallSessionId(sessionId);
-      await setupWebRTC();
+      
+      // تصفير الجدول لهذه الجلسة قبل البدء
+      await sql`
+        INSERT INTO voice_calls (session_id, status, caller_role, caller_candidates, receiver_candidates, updated_at)
+        VALUES (${sessionId}, 'calling', 'owner', '[]'::jsonb, '[]'::jsonb, NOW())
+        ON CONFLICT (session_id) DO UPDATE SET
+          status = 'calling', caller_role = 'owner', offer = NULL, answer = NULL,
+          caller_candidates = '[]'::jsonb, receiver_candidates = '[]'::jsonb, updated_at = NOW()
+      `;
+
+      await setupWebRTC(sessionId);
       
       const offer = await peerConnection.current!.createOffer();
       await peerConnection.current!.setLocalDescription(offer);
 
       await sql`
-        INSERT INTO voice_calls (session_id, status, caller_role, offer, updated_at)
-        VALUES (${sessionId}, 'calling', 'owner', ${JSON.stringify(offer)}, NOW())
-        ON CONFLICT (session_id) DO UPDATE SET
-          status = 'calling',
-          caller_role = 'owner',
+        UPDATE voice_calls SET 
           offer = ${JSON.stringify(offer)},
           updated_at = NOW()
+        WHERE session_id = ${sessionId}
       `;
 
       if (!ringAudio.current) {
         ringAudio.current = new Audio(RING_SOUND);
         ringAudio.current.loop = true;
       }
-      ringAudio.current.play();
+      ringAudio.current.play().catch(() => {});
     } catch (e) {
       console.error("Failed to start call", e);
-      setCallStatus('idle');
+      handleEndCall();
     }
   };
 
   const handleAcceptCall = async () => {
     if (!activeCallSessionId) return;
     try {
-      await setupWebRTC();
+      await setupWebRTC(activeCallSessionId);
       
       const callData = await sql`SELECT offer FROM voice_calls WHERE session_id = ${activeCallSessionId}`;
-      if (callData.length > 0) {
+      if (callData.length > 0 && callData[0].offer) {
         await peerConnection.current!.setRemoteDescription(new RTCSessionDescription(callData[0].offer));
         const answer = await peerConnection.current!.createAnswer();
         await peerConnection.current!.setLocalDescription(answer);
@@ -265,19 +310,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     }
   };
 
-  const handleEndCall = async () => {
-    if (activeCallSessionId) {
-      await sql`UPDATE voice_calls SET status = 'ended', updated_at = NOW() WHERE session_id = ${activeCallSessionId}`;
-    }
+  const handleEndCall = async (notifyOtherSide = true) => {
+    const sessionId = activeCallSessionId;
     
-    if (localStream.current) localStream.current.getTracks().forEach(t => t.stop());
-    if (peerConnection.current) peerConnection.current.close();
-    if (ringAudio.current) ringAudio.current.pause();
-    
-    peerConnection.current = null;
-    localStream.current = null;
+    // 1. تنظيف الحالة المحلية فوراً
     setCallStatus('idle');
     setActiveCallSessionId(null);
+    processedIceCandidates.current.clear();
+
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(t => t.stop());
+      localStream.current = null;
+    }
+    if (peerConnection.current) {
+      peerConnection.current.close();
+      peerConnection.current = null;
+    }
+    if (ringAudio.current) {
+      ringAudio.current.pause();
+      ringAudio.current.currentTime = 0;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+
+    // 2. تحديث قاعدة البيانات إذا لزم الأمر
+    if (notifyOtherSide && sessionId) {
+      try {
+        await sql`UPDATE voice_calls SET status = 'ended', updated_at = NOW() WHERE session_id = ${sessionId}`;
+      } catch (e) {
+        console.error("Error updating DB on hangup", e);
+      }
+    }
   };
 
   const formatDuration = (seconds: number) => {
@@ -286,13 +350,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Fix: Missing handleSelectSession function added to fix line 426 error
   const handleSelectSession = (id: string) => {
     setSelectedSession(id);
     setIsMobileChatOpen(true);
   };
 
-  // Polling for Chat Sessions
   useEffect(() => {
     const fetchSessions = async () => {
       try {
@@ -329,11 +391,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             lastGlobalActiveRef.current = mostRecentTime;
           }
         }
-      } catch (e) {
-        console.error("Error fetching sessions", e);
-      }
+      } catch (e) { console.error(e); }
     };
-
     fetchSessions();
     const interval = setInterval(fetchSessions, 5000); 
     return () => clearInterval(interval);
@@ -399,12 +458,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
               <StatCard icon={<Package size={18} className="text-orange-500" />} label="منتجات" value={localProfile.products.length.toString()} sub="نشط" />
               <StatCard icon={<TrendingUp size={18} className="text-purple-500" />} label="تحويل" value="3.2%" sub="-0.5%" />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-3xl shadow-sm border">
-                <h3 className="text-md font-bold mb-4 text-[#0D2B4D]">نشاط المحادثات</h3>
-                <div className="h-[250px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={STATS_DATA}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="chats" fill="#00D1FF" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
-              </div>
-            </div>
           </div>
         );
 
@@ -457,10 +510,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                         <div className="flex items-center gap-1.5"><PhoneIcon size={10} className="text-gray-400" /><span className="text-[10px] text-gray-500 font-bold ltr">{activeSessions.find(s => s.id === selectedSession)?.customerPhone || 'بدون رقم'}</span></div>
                       </div>
                     </div>
-                    {/* زر الاتصال الجديد */}
                     <button 
                       onClick={() => handleStartCall(selectedSession)}
-                      className="bg-green-500 text-white p-3 rounded-2xl shadow-lg hover:bg-green-600 transition-all flex items-center gap-2 text-xs font-bold"
+                      disabled={callStatus !== 'idle'}
+                      className="bg-green-500 text-white p-3 rounded-2xl shadow-lg hover:bg-green-600 transition-all flex items-center gap-2 text-xs font-bold disabled:opacity-50"
                     >
                       <PhoneCall size={18} />
                       <span className="hidden sm:inline">اتصال الآن</span>
@@ -502,7 +555,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row font-tajawal">
-      {/* شاشة الاتصال المتكاملة */}
+      {/* عنصر الصوت الخفي للمكالمات */}
+      <audio ref={remoteAudioRef} autoPlay className="hidden" />
+
       {callStatus !== 'idle' && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[#0D2B4D]/90 backdrop-blur-xl animate-in fade-in"></div>
@@ -525,7 +580,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
               {callStatus === 'connected' && formatDuration(callDuration)}
             </p>
 
-            {/* موجات صوتية بسيطة */}
             {callStatus === 'connected' && (
               <div className="flex justify-center gap-1.5 h-12 mb-10 items-center">
                 {[1,2,3,4,5,6,7].map(i => (
@@ -537,7 +591,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             <div className="flex items-center justify-center gap-6">
               {callStatus === 'incoming' ? (
                 <>
-                  <button onClick={handleEndCall} className="w-16 h-16 bg-red-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-red-600 transition-all"><PhoneOff size={28} /></button>
+                  <button onClick={() => handleEndCall(true)} className="w-16 h-16 bg-red-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-red-600 transition-all"><PhoneOff size={28} /></button>
                   <button onClick={handleAcceptCall} className="w-16 h-16 bg-green-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-green-600 animate-bounce transition-all"><PhoneCall size={28} /></button>
                 </>
               ) : (
@@ -545,7 +599,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <button onClick={() => setIsMuted(!isMuted)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all border ${isMuted ? 'bg-white text-[#0D2B4D]' : 'bg-white/10 text-white border-white/20'}`}>
                     {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
                   </button>
-                  <button onClick={handleEndCall} className="w-20 h-20 bg-red-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-red-600 transition-all"><PhoneOff size={32} /></button>
+                  <button onClick={() => handleEndCall(true)} className="w-20 h-20 bg-red-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-red-600 transition-all"><PhoneOff size={32} /></button>
                   <button className="w-14 h-14 bg-white/10 text-white rounded-full flex items-center justify-center border border-white/20"><Volume2 size={22} /></button>
                 </>
               )}
@@ -554,7 +608,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
       )}
 
-      {/* Sidebar and Main Content (Existing) */}
       <aside className="w-72 bg-[#0D2B4D] text-white fixed h-full hidden lg:flex flex-col p-8 z-40">
         <div className="flex items-center gap-3 mb-12 px-2">
           <img src="https://i.ibb.co/XxVXdyhC/6.png" alt="Logo" className="h-10" />

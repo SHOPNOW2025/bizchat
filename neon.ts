@@ -64,15 +64,16 @@ export const initTables = async () => {
       )
     `;
 
-    // جدول المكالمات والإشارات (Signaling)
+    // تحديث جدول المكالمات ليشمل مسارات ICE منفصلة
     await sql`
       CREATE TABLE IF NOT EXISTS voice_calls (
         session_id TEXT PRIMARY KEY,
-        status TEXT DEFAULT 'idle', -- idle, calling, connected, ended
-        caller_role TEXT, -- owner or customer
+        status TEXT DEFAULT 'idle',
+        caller_role TEXT,
         offer JSONB,
         answer JSONB,
-        ice_candidates JSONB DEFAULT '[]',
+        caller_candidates JSONB DEFAULT '[]',
+        receiver_candidates JSONB DEFAULT '[]',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
