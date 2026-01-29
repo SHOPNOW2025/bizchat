@@ -1,14 +1,22 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { BusinessProfile, Product, Message } from '../types';
-import { sql } from '../neon';
+import { db } from '../firebase';
+import { collection, addDoc, query, orderBy, onSnapshot, limit, serverTimestamp, setDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { 
   Send, 
   Phone, 
+  Instagram, 
   ShoppingBag, 
+  Info, 
   X, 
+  ChevronDown,
+  ExternalLink,
   Check,
-  User
+  Twitter,
+  Facebook,
+  Globe,
+  CheckCheck
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -19,26 +27,38 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPolicyOpen, setIsPolicyOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `sess_${Date.now()}`);
+  const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Date.now()}`);
 
-  // دالة لجلب الرسائل من PostgreSQL
-  const fetchMessages = async () => {
-    try {
-      const rows = await sql`
-        SELECT * FROM messages 
-        WHERE profile_id = ${profile.id} AND session_id = ${chatSessionId.current}
-        ORDER BY timestamp ASC
-      `;
+  useEffect(() => {
+    localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
+
+    // Ensure session document exists and is tracking active time
+    const sessionRef = doc(db, "profiles", profile.id, "chats", chatSessionId.current);
+    setDoc(sessionRef, { 
+      lastActive: serverTimestamp(),
+      customerId: chatSessionId.current,
+      createdAt: serverTimestamp()
+    }, { merge: true });
+
+    const q = query(
+      collection(db, "profiles", profile.id, "chats", chatSessionId.current, "messages"),
+      orderBy("timestamp", "asc"),
+      limit(100)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          sender: data.sender,
+          text: data.text,
+          timestamp: data.timestamp?.toDate() || new Date()
+        } as Message;
+      });
       
-      const msgs: Message[] = rows.map(r => ({
-        id: r.id,
-        sender: r.sender as 'customer' | 'owner',
-        text: r.text,
-        timestamp: new Date(r.timestamp)
-      }));
-
       if (msgs.length === 0) {
         setMessages([
           { id: 'welcome', sender: 'owner', text: `مرحباً بك في ${profile.name}! كيف يمكنني مساعدتك اليوم؟`, timestamp: new Date() }
@@ -46,19 +66,9 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       } else {
         setMessages(msgs);
       }
-      setIsLoading(false);
-    } catch (e) {
-      console.error("Error fetching messages from Neon:", e);
-    }
-  };
+    });
 
-  useEffect(() => {
-    localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
-    fetchMessages();
-
-    // تحديث دوري كل 5 ثوانٍ لمحاكاة الوقت الفعلي
-    const interval = setInterval(fetchMessages, 5000);
-    return () => clearInterval(interval);
+    return () => unsubscribe();
   }, [profile.id]);
 
   useEffect(() => {
@@ -69,67 +79,73 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     if (!inputValue.trim()) return;
 
     const text = inputValue;
-    const msgId = `m_${Date.now()}`;
     setInputValue('');
 
-    // تحديث الواجهة فوراً (Optimistic Update)
-    const newMsg: Message = {
-      id: msgId,
-      sender: 'customer',
-      text: text,
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, newMsg]);
-
     try {
-      await sql`
-        INSERT INTO messages (id, profile_id, session_id, sender, text)
-        VALUES (${msgId}, ${profile.id}, ${chatSessionId.current}, 'customer', ${text})
-      `;
+      // 1. Update the parent session document to trigger notifications in Dashboard
+      const sessionRef = doc(db, "profiles", profile.id, "chats", chatSessionId.current);
+      await updateDoc(sessionRef, {
+        lastText: text,
+        lastActive: serverTimestamp()
+      });
+
+      // 2. Add the message to the subcollection
+      await addDoc(collection(db, "profiles", profile.id, "chats", chatSessionId.current, "messages"), {
+        sender: 'customer',
+        text: text,
+        timestamp: serverTimestamp()
+      });
+      
     } catch (e) {
-      console.error("Error saving message to Neon:", e);
-      alert("فشل في إرسال الرسالة، يرجى المحاولة لاحقاً.");
+      console.error("Error sending message", e);
+      // If document doesn't exist (due to some error), set it again
+      const sessionRef = doc(db, "profiles", profile.id, "chats", chatSessionId.current);
+      await setDoc(sessionRef, { lastText: text, lastActive: serverTimestamp() }, { merge: true });
     }
   };
 
   return (
-    <div className="h-screen bg-[#F8FAFC] flex flex-col max-w-2xl mx-auto shadow-2xl relative overflow-hidden font-tajawal">
+    <div className="h-screen bg-[#F0F4F8] flex flex-col max-w-2xl mx-auto shadow-2xl relative overflow-hidden font-tajawal">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md p-4 flex items-center justify-between border-b shadow-sm z-30 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#00D1FF] p-0.5">
-            <img src={profile.logo} alt={profile.name} className="w-full h-full object-cover rounded-full" />
+      <header className="bg-white p-5 flex items-center justify-between border-b shadow-sm z-30">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-[20px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-gray-50">
+            <img src={profile.logo} alt={profile.name} className="w-full h-full object-cover rounded-[18px]" />
           </div>
           <div>
-            <h1 className="font-bold text-lg text-[#0D2B4D]">{profile.name}</h1>
-            <span className="text-[10px] text-green-500 font-bold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> متصل الآن
-            </span>
+            <h1 className="font-black text-lg text-[#0D2B4D] leading-none mb-1.5">{profile.name}</h1>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest">مستعد لخدمتك</span>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <a href={`tel:${profile.phone}`} className="w-10 h-10 rounded-2xl bg-gray-50 text-[#0D2B4D] flex items-center justify-center hover:bg-[#0D2B4D] hover:text-white transition-all">
-            <Phone size={18} />
-          </a>
-          <button onClick={() => setIsCatalogOpen(true)} className="w-10 h-10 rounded-2xl bg-[#00D1FF]/10 text-[#00D1FF] flex items-center justify-center hover:bg-[#00D1FF] hover:text-white transition-all">
-            <ShoppingBag size={18} />
-          </button>
+        <div className="flex gap-2.5">
+          <a href={`tel:${profile.phone}`} className="w-11 h-11 rounded-2xl bg-blue-50 text-[#0D2B4D] flex items-center justify-center hover:bg-blue-100 transition-all shadow-sm border border-blue-100"><Phone size={20} /></a>
+          <button onClick={() => setIsCatalogOpen(true)} className="w-11 h-11 rounded-2xl bg-[#00D1FF] text-white flex items-center justify-center hover:bg-cyan-600 transition-all shadow-xl shadow-cyan-500/20"><ShoppingBag size={20} /></button>
         </div>
       </header>
 
+      {/* Profile Bio */}
+      {profile.description && (
+        <div className="bg-white/80 backdrop-blur-md px-6 py-3 border-b text-center">
+           <p className="text-xs text-gray-600 font-medium leading-relaxed italic line-clamp-2">"{profile.description}"</p>
+        </div>
+      )}
+
       {/* Chat Messages */}
-      <main className="flex-1 overflow-y-auto p-5 space-y-6 bg-gradient-to-b from-white to-gray-50">
+      <main className="flex-1 overflow-y-auto p-5 space-y-6 bg-[url('https://www.transparenttextures.com/patterns/pinstriped-suit.png')]">
         {messages.map((msg) => (
-          <div key={msg.id} className={`flex flex-col ${msg.sender === 'customer' ? 'items-start' : 'items-end'}`}>
-            <div className={`max-w-[85%] p-4 rounded-3xl shadow-sm ${
+          <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-start' : 'justify-end'}`}>
+            <div className={`max-w-[85%] p-4 rounded-3xl shadow-md relative animate-in fade-in slide-in-from-bottom-3 duration-500 ${
               msg.sender === 'customer' 
-                ? 'bg-white text-gray-800 rounded-tr-none border border-gray-100' 
-                : 'bg-[#0D2B4D] text-white rounded-tl-none'
+                ? 'bg-white text-gray-800 rounded-tr-none' 
+                : 'bg-[#0D2B4D] text-white rounded-tl-none border-b-4 border-blue-900 shadow-xl'
             }`}>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-              <div className={`text-[10px] mt-2 flex items-center gap-1.5 ${msg.sender === 'customer' ? 'text-gray-400' : 'text-blue-200/60'}`}>
+              <p className="text-sm leading-relaxed font-medium">{msg.text}</p>
+              <div className={`text-[9px] mt-2.5 flex items-center gap-1 font-bold ${msg.sender === 'customer' ? 'text-gray-400' : 'text-blue-300'}`}>
                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                {msg.sender === 'owner' && <Check size={12} />}
+                {msg.sender === 'owner' && <CheckCheck size={12} />}
               </div>
             </div>
           </div>
@@ -138,55 +154,104 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       </main>
 
       {/* Input Area */}
-      <footer className="p-4 bg-white border-t border-gray-100">
+      <footer className="p-5 bg-white border-t space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex-1 bg-gray-50 border border-gray-100 rounded-3xl px-5 flex items-center">
+          <div className="flex-1 bg-gray-50 rounded-[24px] px-5 flex items-center focus-within:ring-2 focus-within:ring-[#00D1FF] transition-all border border-gray-100">
             <input 
               type="text" 
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="اكتب رسالتك لصاحب المتجر..."
-              className="w-full py-4 bg-transparent outline-none text-sm"
+              placeholder="اكتب رسالتك للمتجر هنا..."
+              className="w-full py-5 bg-transparent outline-none text-sm font-medium"
             />
           </div>
           <button 
             onClick={handleSend}
             disabled={!inputValue.trim()}
-            className="w-14 h-14 rounded-full bg-[#0D2B4D] text-white flex items-center justify-center shadow-xl disabled:opacity-50"
+            className="w-16 h-16 rounded-[24px] bg-[#0D2B4D] text-white flex items-center justify-center shadow-2xl shadow-blue-900/30 disabled:opacity-50 hover:scale-105 active:scale-95 transition-all"
           >
-            <Send size={22} className="transform -rotate-45" />
+            <Send size={24} className="transform -rotate-45 -mr-1" />
+          </button>
+        </div>
+        <div className="flex justify-center">
+          <button onClick={() => setIsPolicyOpen(true)} className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2 hover:text-[#00D1FF] transition-colors group">
+            <Info size={14} className="group-hover:rotate-12 transition-transform" /> سياسات ومعلومات المتجر
           </button>
         </div>
       </footer>
 
       {/* Catalog Drawer */}
       {isCatalogOpen && (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsCatalogOpen(false)}></div>
-          <div className="bg-white rounded-t-[40px] max-h-[85vh] p-6 overflow-y-auto relative z-10 animate-in slide-in-from-bottom duration-300">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">الكتالوج</h3>
-              <button onClick={() => setIsCatalogOpen(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {profile.products.map(p => (
-                <div key={p.id} className="border border-gray-100 rounded-3xl p-3 bg-white shadow-sm">
-                   <img src={p.image} className="w-full aspect-square object-cover rounded-2xl mb-2" />
-                   <p className="text-xs font-bold truncate">{p.name}</p>
-                   <p className="text-[10px] text-[#00D1FF] mb-2">{p.price} {profile.currency}</p>
-                   <button 
-                    onClick={() => {setInputValue(`أريد الاستفسار عن: ${p.name}`); setIsCatalogOpen(false)}} 
-                    className="w-full py-2 bg-[#0D2B4D] text-white rounded-xl text-[10px] font-bold"
-                   >
-                    طلب المنتج
-                   </button>
+        <div className="absolute inset-0 z-50">
+          <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsCatalogOpen(false)}></div>
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[50px] max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-full duration-700">
+            <div className="p-8 flex items-center justify-between border-b bg-gray-50/50 relative">
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-gray-200 rounded-full"></div>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="p-3 bg-cyan-50 rounded-2xl text-[#00D1FF]"><ShoppingBag size={24} /></div>
+                <div>
+                  <h3 className="text-xl font-black text-[#0D2B4D]">كتالوج المتجر</h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">تصفح واطلب ما تحب</p>
                 </div>
-              ))}
-              {profile.products.length === 0 && (
-                <div className="col-span-2 text-center py-10 text-gray-400">لا توجد منتجات معروضة حالياً</div>
+              </div>
+              <button onClick={() => setIsCatalogOpen(false)} className="w-12 h-12 rounded-full bg-white shadow-md flex items-center justify-center text-gray-400 hover:text-red-500 transition-all">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8 grid grid-cols-2 gap-6">
+              {profile.products.length === 0 ? (
+                <div className="col-span-2 text-center py-24">
+                   <p className="text-gray-400 font-bold">لا توجد منتجات حالياً</p>
+                </div>
+              ) : (
+                profile.products.map(product => (
+                  <div key={product.id} className="bg-white border rounded-[32px] overflow-hidden group hover:shadow-2xl transition-all border-gray-100 flex flex-col">
+                    <div className="aspect-square relative overflow-hidden bg-gray-50">
+                      <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                      <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-black text-[#0D2B4D] shadow-xl">
+                        {product.price} {profile.currency}
+                      </div>
+                    </div>
+                    <div className="p-5 flex-1 flex flex-col gap-2">
+                      <h4 className="font-bold text-xs text-[#0D2B4D] line-clamp-1">{product.name}</h4>
+                      <button 
+                        onClick={() => { setInputValue(`مهتم بطلب: ${product.name}`); setIsCatalogOpen(false); }}
+                        className="w-full py-3.5 bg-[#0D2B4D] text-white text-[10px] font-bold rounded-2xl hover:bg-black transition-all shadow-lg shadow-blue-900/10 mt-2"
+                      >
+                        طلب المنتج
+                      </button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Policy Modal */}
+      {isPolicyOpen && (
+        <div className="absolute inset-0 z-50 p-6 flex items-center justify-center">
+          <div className="absolute inset-0 bg-[#0D2B4D]/80 backdrop-blur-md animate-in fade-in" onClick={() => setIsPolicyOpen(false)}></div>
+          <div className="relative w-full max-w-sm bg-white rounded-[40px] p-8 shadow-2xl animate-in zoom-in-95 duration-300">
+            <h3 className="text-xl font-black text-[#0D2B4D] mb-8 text-center">معلومات التواصل</h3>
+            <div className="space-y-6">
+              <div className="bg-gray-50 p-5 rounded-3xl space-y-4">
+                <h4 className="text-[10px] font-black text-gray-400 uppercase">السياسات</h4>
+                <div className="space-y-3">
+                   <div className="flex gap-3"><ShoppingBag size={14} className="text-[#00D1FF] shrink-0" /><p className="text-[11px] text-gray-600 leading-relaxed">{profile.returnPolicy}</p></div>
+                   <div className="flex gap-3"><Globe size={14} className="text-[#00D1FF] shrink-0" /><p className="text-[11px] text-gray-600 leading-relaxed">{profile.deliveryPolicy}</p></div>
+                </div>
+              </div>
+              <div className="flex justify-center gap-4">
+                {profile.socialLinks.instagram && <a href={profile.socialLinks.instagram} className="w-14 h-14 rounded-2xl bg-pink-50 text-pink-500 flex items-center justify-center hover:scale-110 transition-all border border-pink-100"><Instagram size={24} /></a>}
+                {profile.socialLinks.twitter && <a href={profile.socialLinks.twitter} className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-400 flex items-center justify-center hover:scale-110 transition-all border border-blue-100"><Twitter size={24} /></a>}
+                {profile.socialLinks.facebook && <a href={profile.socialLinks.facebook} className="w-14 h-14 rounded-2xl bg-blue-800 text-white flex items-center justify-center hover:scale-110 transition-all"><Facebook size={24} /></a>}
+                {profile.socialLinks.whatsapp && <a href={profile.socialLinks.whatsapp} className="w-14 h-14 rounded-2xl bg-green-50 text-green-500 flex items-center justify-center hover:scale-110 transition-all border border-green-100"><Phone size={24} /></a>}
+              </div>
+            </div>
+            <button onClick={() => setIsPolicyOpen(false)} className="w-full mt-8 py-5 bg-[#0D2B4D] text-white font-black rounded-3xl shadow-xl">رجوع للدردشة</button>
           </div>
         </div>
       )}

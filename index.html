@@ -7,44 +7,40 @@
     <title>Bazchat - بازشات</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
-    <script>
-      // حماية من أخطاء المكتبات التي تبحث عن متغيرات البيئة في المتصفح
-      window.process = { 
-        env: { NODE_ENV: 'production' },
-        browser: true 
-      };
-      window.global = window;
-    </script>
     <style>
       body {
         font-family: 'Tajawal', sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #f9fafb;
       }
-      #root {
-        min-height: 100vh;
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555;
       }
     </style>
   <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom": "https://esm.sh/react-dom@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.460.0?external=react",
-    "recharts": "https://esm.sh/recharts@2.12.0?external=react,react-dom",
-    "@neondatabase/serverless": "https://esm.sh/@neondatabase/serverless@0.9.0",
-    "react/": "https://esm.sh/react@18.3.1/",
-    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "vite": "https://esm.sh/vite@^7.3.1"
+    "recharts": "https://esm.sh/recharts@^3.7.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+    "@neondatabase/serverless": "https://esm.sh/@neondatabase/serverless@^0.9.0"
   }
 }
 </script>
 </head>
   <body class="bg-gray-50 text-gray-900">
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

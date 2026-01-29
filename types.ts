@@ -34,6 +34,7 @@ export interface BusinessProfile {
   id: string;
   name: string;
   ownerName: string;
+  description?: string;
   phone: string;
   countryCode: string;
   logo: string;

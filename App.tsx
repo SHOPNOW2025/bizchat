@@ -14,10 +14,55 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [publicProfile, setPublicProfile] = useState<BusinessProfile | null>(null);
 
+  useEffect(() => {
+    const bootstrap = async () => {
+      try {
+        await initTables();
+        
+        const handleHashChange = async () => {
+          const hash = window.location.hash;
+          if (hash.startsWith('#/chat/')) {
+            const profileId = hash.split('/')[2];
+            await loadPublicProfile(profileId);
+            setView(AppView.PUBLIC_CHAT);
+          } else if (hash === '#/dashboard' && user) {
+            setView(AppView.DASHBOARD);
+          } else if (hash === '#/login') {
+            setView(AppView.LOGIN);
+          } else if (hash === '#/signup') {
+            setView(AppView.SIGNUP);
+          } else {
+            setView(AppView.LANDING);
+          }
+        };
+
+        window.addEventListener('hashchange', handleHashChange);
+        
+        const savedUser = localStorage.getItem('bazchat_user');
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
+        
+        await handleHashChange();
+        setLoading(false);
+      } catch (e) {
+        console.error("Bootstrap failed", e);
+        setError("فشل الاتصال بقاعدة البيانات. يرجى التحقق من اتصال الإنترنت أو إعدادات Neon.");
+        setLoading(false);
+      }
+    };
+
+    bootstrap();
+
+    return () => {
+      window.removeEventListener('hashchange', () => {});
+    };
+  }, [user]);
+
   const loadPublicProfile = async (id: string) => {
     try {
       const rows = await sql`SELECT * FROM profiles WHERE id = ${id}`;
-      if (rows && rows.length > 0) {
+      if (rows.length > 0) {
         const p = rows[0];
         setPublicProfile({
           id: p.id,
@@ -32,81 +77,11 @@ const App: React.FC = () => {
           returnPolicy: p.return_policy,
           deliveryPolicy: p.delivery_policy
         });
-        return true;
       }
-      return false;
     } catch (e) {
-      console.error("Profile load error:", e);
-      return false;
+      console.error("Error loading profile from Neon", e);
     }
   };
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const handleRoute = async () => {
-      if (!isMounted) return;
-      const hash = window.location.hash;
-      
-      try {
-        if (hash.startsWith('#/chat/')) {
-          const profileId = hash.split('/')[2];
-          const found = await loadPublicProfile(profileId);
-          if (found && isMounted) setView(AppView.PUBLIC_CHAT);
-          else if (isMounted) setView(AppView.LANDING);
-        } else if (hash === '#/dashboard') {
-          setView(AppView.DASHBOARD);
-        } else if (hash === '#/login') {
-          setView(AppView.LOGIN);
-        } else if (hash === '#/signup') {
-          setView(AppView.SIGNUP);
-        } else {
-          setView(AppView.LANDING);
-        }
-      } catch (err) {
-        console.error("Routing error:", err);
-      }
-    };
-
-    const startApp = async () => {
-      try {
-        if (isMounted) setLoading(true);
-        
-        // محاولة تهيئة قاعدة البيانات
-        try {
-          await initTables();
-        } catch (dbErr) {
-          console.warn("Database initialization status:", dbErr);
-        }
-
-        const savedUser = localStorage.getItem('bazchat_user');
-        if (savedUser && isMounted) {
-          try {
-            setUser(JSON.parse(savedUser));
-          } catch (e) {
-            localStorage.removeItem('bazchat_user');
-          }
-        }
-
-        await handleRoute();
-        if (isMounted) setLoading(false);
-      } catch (e) {
-        console.error("Initialization error:", e);
-        if (isMounted) {
-          setError("تعذر تشغيل التطبيق. يرجى التحقق من اتصال الإنترنت.");
-          setLoading(false);
-        }
-      }
-    };
-
-    startApp();
-
-    window.addEventListener('hashchange', handleRoute);
-    return () => {
-      isMounted = false;
-      window.removeEventListener('hashchange', handleRoute);
-    };
-  }, []);
 
   const handleAuthSuccess = (userData: User) => {
     setUser(userData);
@@ -122,27 +97,28 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white font-tajawal">
-        <div className="relative">
-           <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-20 animate-bounce mb-4" alt="Logo" />
-           <div className="absolute -bottom-2 left-0 right-0 h-1 bg-cyan-100 rounded-full overflow-hidden">
-             <div className="h-full bg-cyan-500 w-1/2 animate-[loading_1s_infinite]"></div>
-           </div>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-4">
+          <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-20 animate-pulse" alt="Logo" />
+          <p className="text-[#0D2B4D] font-bold">جاري الاتصال بقاعدة البيانات...</p>
         </div>
-        <p className="text-[#0D2B4D] font-bold mt-4">جاري تشغيل بازشات...</p>
-        <style>{`@keyframes loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }`}</style>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 p-6 text-center font-tajawal">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm border border-red-50">
-          <div className="text-red-500 text-4xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-black text-[#0D2B4D] mb-2">حدث خطأ تقني</h2>
-          <p className="text-gray-500 mb-6 text-sm">{error}</p>
-          <button onClick={() => window.location.reload()} className="w-full bg-[#0D2B4D] text-white px-8 py-3 rounded-xl font-bold shadow-lg">إعادة المحاولة</button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-center">
+        <div className="bg-white p-8 rounded-3xl shadow-xl border border-red-100 max-w-md">
+          <div className="text-red-500 mb-4 text-4xl">⚠️</div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">خطأ في الاتصال</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-[#00D1FF] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#00B8E0] transition-all"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       </div>
     );
@@ -159,13 +135,17 @@ const App: React.FC = () => {
       case AppView.DASHBOARD:
         return user ? <Dashboard user={user} setUser={setUser} onLogout={handleLogout} /> : <Auth type="login" onAuth={handleAuthSuccess} onToggle={() => window.location.hash = '#/signup'} />;
       case AppView.PUBLIC_CHAT:
-        return publicProfile ? <PublicChatPage profile={publicProfile} /> : <LandingPage onNavigate={() => {}} />;
+        return publicProfile ? <PublicChatPage profile={publicProfile} /> : <div className="p-10 text-center">الصفحة غير موجودة</div>;
       default:
-        return <LandingPage onNavigate={() => {}} />;
+        return <LandingPage onNavigate={(v) => window.location.hash = v === AppView.LOGIN ? '#/login' : '#/signup'} />;
     }
   };
 
-  return <div className="min-h-screen">{renderView()}</div>;
+  return (
+    <div className="min-h-screen">
+      {renderView()}
+    </div>
+  );
 };
 
 export default App;
