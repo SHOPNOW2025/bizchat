@@ -44,15 +44,39 @@ const App: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
+    const handleRoute = async () => {
+      if (!isMounted) return;
+      const hash = window.location.hash;
+      
+      try {
+        if (hash.startsWith('#/chat/')) {
+          const profileId = hash.split('/')[2];
+          const found = await loadPublicProfile(profileId);
+          if (found && isMounted) setView(AppView.PUBLIC_CHAT);
+          else if (isMounted) setView(AppView.LANDING);
+        } else if (hash === '#/dashboard') {
+          setView(AppView.DASHBOARD);
+        } else if (hash === '#/login') {
+          setView(AppView.LOGIN);
+        } else if (hash === '#/signup') {
+          setView(AppView.SIGNUP);
+        } else {
+          setView(AppView.LANDING);
+        }
+      } catch (err) {
+        console.error("Routing error:", err);
+      }
+    };
+
     const startApp = async () => {
       try {
-        setLoading(true);
+        if (isMounted) setLoading(true);
         
-        // محاولة تهيئة قاعدة البيانات - إذا فشلت نتجاهل الخطأ إذا كانت الجداول موجودة بالفعل
+        // محاولة تهيئة قاعدة البيانات
         try {
           await initTables();
         } catch (dbErr) {
-          console.warn("DB init notice:", dbErr);
+          console.warn("Database initialization status:", dbErr);
         }
 
         const savedUser = localStorage.getItem('bazchat_user');
@@ -64,33 +88,12 @@ const App: React.FC = () => {
           }
         }
 
-        const handleRoute = async () => {
-          if (!isMounted) return;
-          const hash = window.location.hash;
-          if (hash.startsWith('#/chat/')) {
-            const profileId = hash.split('/')[2];
-            const found = await loadPublicProfile(profileId);
-            if (found && isMounted) setView(AppView.PUBLIC_CHAT);
-            else if (isMounted) setView(AppView.LANDING);
-          } else if (hash === '#/dashboard') {
-            setView(AppView.DASHBOARD);
-          } else if (hash === '#/login') {
-            setView(AppView.LOGIN);
-          } else if (hash === '#/signup') {
-            setView(AppView.SIGNUP);
-          } else {
-            setView(AppView.LANDING);
-          }
-        };
-
-        window.addEventListener('hashchange', handleRoute);
         await handleRoute();
-
         if (isMounted) setLoading(false);
       } catch (e) {
         console.error("Initialization error:", e);
         if (isMounted) {
-          setError("فشل في تحميل التطبيق. يرجى التحقق من اتصال الإنترنت.");
+          setError("تعذر تشغيل التطبيق. يرجى التحقق من اتصال الإنترنت.");
           setLoading(false);
         }
       }
@@ -98,9 +101,10 @@ const App: React.FC = () => {
 
     startApp();
 
+    window.addEventListener('hashchange', handleRoute);
     return () => {
       isMounted = false;
-      window.removeEventListener('hashchange', () => {});
+      window.removeEventListener('hashchange', handleRoute);
     };
   }, []);
 
@@ -125,7 +129,7 @@ const App: React.FC = () => {
              <div className="h-full bg-cyan-500 w-1/2 animate-[loading_1s_infinite]"></div>
            </div>
         </div>
-        <p className="text-[#0D2B4D] font-bold mt-4">جاري تحميل بازشات...</p>
+        <p className="text-[#0D2B4D] font-bold mt-4">جاري تشغيل بازشات...</p>
         <style>{`@keyframes loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }`}</style>
       </div>
     );
@@ -136,7 +140,7 @@ const App: React.FC = () => {
       <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 p-6 text-center font-tajawal">
         <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm border border-red-50">
           <div className="text-red-500 text-4xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-black text-[#0D2B4D] mb-2">عذراً، حدث خطأ</h2>
+          <h2 className="text-2xl font-black text-[#0D2B4D] mb-2">حدث خطأ تقني</h2>
           <p className="text-gray-500 mb-6 text-sm">{error}</p>
           <button onClick={() => window.location.reload()} className="w-full bg-[#0D2B4D] text-white px-8 py-3 rounded-xl font-bold shadow-lg">إعادة المحاولة</button>
         </div>
