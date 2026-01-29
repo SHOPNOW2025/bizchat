@@ -208,7 +208,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     } catch (e) { handleEndCall(); }
   };
 
-  // Fix: Added handleAcceptCall function
   const handleAcceptCall = async () => {
     if (!activeCallSessionId || !currentCallId) return;
     try {
@@ -242,7 +241,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     }
   };
 
-  // Fix: Added formatDuration helper
   const formatDuration = (s: number) => {
     const mins = Math.floor(s / 60);
     const secs = s % 60;
@@ -345,7 +343,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     setIsAddProductModalOpen(false);
   };
 
-  // Fix: Added removeProduct function
   const removeProduct = (id: string) => {
     setLocalProfile(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) }));
   };
@@ -378,14 +375,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 rounded-[32px] shadow-sm border">
-                <h3 className="text-md font-bold mb-6 text-[#0D2B4D]">نشاط المحادثات</h3>
+                <h3 className="text-md font-bold mb-6 text-[#0D2B4D]">نشاط المحادثات الأسبوعي</h3>
                 <div className="h-[250px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={STATS_DATA}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                       <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
                       <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={{borderRadius: '16px', border: 'none'}} />
+                      <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
                       <Bar dataKey="chats" fill="#00D1FF" radius={[6, 6, 0, 0]} barSize={24} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -399,8 +396,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                       <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
                       <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={{borderRadius: '16px', border: 'none'}} />
-                      <Line type="monotone" dataKey="views" stroke="#0D2B4D" strokeWidth={3} dot={{r: 4}} />
+                      <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                      <Line type="monotone" dataKey="views" stroke="#0D2B4D" strokeWidth={3} dot={{r: 4, fill: '#0D2B4D', strokeWidth: 2, stroke: '#fff'}} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -410,12 +407,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         );
       case DashboardTab.MESSAGES:
         return (
-          <div className="flex h-[calc(100vh-140px)] bg-white rounded-[40px] shadow-sm border overflow-hidden relative">
+          <div className="flex h-[calc(100vh-160px)] bg-white rounded-[40px] shadow-sm border overflow-hidden relative">
             <div className={`w-full md:w-80 border-l overflow-y-auto bg-gray-50/30 ${isMobileChatOpen ? 'hidden md:block' : 'block'}`}>
               <div className="p-6 border-b bg-white sticky top-0 z-10 flex items-center justify-between">
                 <h3 className="font-bold text-[#0D2B4D]">المحادثات</h3>
                 <button onClick={() => setShowSoundSettings(!showSoundSettings)} className="p-2 text-gray-400 relative">
                    {selectedSoundId === 'mute' ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                   {showSoundSettings && (
+                     <div className="absolute top-12 left-0 w-48 bg-white border shadow-2xl rounded-3xl p-4 z-50 text-right animate-in zoom-in-95">
+                       <p className="text-[10px] font-black text-gray-400 mb-3">نغمة التنبيه</p>
+                       <div className="space-y-1">
+                         {SOUND_OPTIONS.map(s => (
+                           <button key={s.id} onClick={(e) => { e.stopPropagation(); setSelectedSoundId(s.id); localStorage.setItem('merchant_sound_id', s.id); setShowSoundSettings(false); }} className={`w-full text-right px-4 py-3 rounded-2xl text-xs font-bold ${selectedSoundId === s.id ? 'bg-[#00D1FF] text-white' : 'hover:bg-gray-50'}`}>{s.name}</button>
+                         ))}
+                       </div>
+                     </div>
+                   )}
                 </button>
               </div>
               {activeSessions.length === 0 ? <div className="p-10 text-center text-gray-400 text-sm font-bold">لا توجد رسائل بعد</div> : activeSessions.map(session => (
@@ -435,27 +442,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <div className="flex items-center gap-4">
                       <button onClick={() => setIsMobileChatOpen(false)} className="md:hidden p-2 bg-gray-100 rounded-xl"><ChevronRight size={20} /></button>
                       <div className="w-10 h-10 rounded-[14px] bg-gray-100 flex items-center justify-center font-bold">{activeSessions.find(s=>s.id===selectedSession)?.customerName?.substring(0,1)}</div>
-                      <span className="font-bold">{activeSessions.find(s=>s.id===selectedSession)?.customerName}</span>
+                      <span className="font-bold text-lg">{activeSessions.find(s=>s.id===selectedSession)?.customerName}</span>
                     </div>
-                    <button onClick={() => handleStartCall(selectedSession)} disabled={callStatus !== 'idle'} className="bg-green-500 text-white p-3 rounded-2xl disabled:opacity-50 shadow-lg shadow-green-200"><PhoneCall size={18} /></button>
+                    <button onClick={() => handleStartCall(selectedSession)} disabled={callStatus !== 'idle'} className="bg-green-500 text-white p-3 rounded-2xl shadow-xl shadow-green-500/20 hover:scale-105 transition-transform disabled:opacity-50"><PhoneCall size={18} /></button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/20">
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/30">
                     {chatMessages.map(m => (
                       <div key={m.id} className={`flex ${m.sender==='owner'?'justify-start':'justify-end'}`}>
-                        <div className={`max-w-[85%] p-4 rounded-[24px] text-sm font-medium shadow-sm ${m.sender==='owner'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border rounded-tl-none text-gray-800'}`}>
-                          {m.text}<div className="text-[9px] mt-2 opacity-60 text-left">{m.timestamp?.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+                        <div className={`max-w-[80%] p-5 rounded-[28px] text-sm font-medium shadow-sm ${m.sender==='owner'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border rounded-tl-none text-gray-800'}`}>
+                          {m.text}<div className="text-[9px] mt-2 opacity-60 text-left font-black">{m.timestamp?.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
                         </div>
                       </div>
                     ))}
                     <div ref={messagesEndRef} />
                   </div>
-                  <div className="p-4 border-t flex gap-2">
-                    <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyPress={e=>e.key==='Enter'&&handleReply()} placeholder="اكتب ردك..." className="flex-1 px-5 py-3 rounded-2xl border bg-gray-50 outline-none font-bold" />
-                    <button onClick={handleReply} className="w-12 h-12 bg-[#00D1FF] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-200"><Send size={20} /></button>
+                  <div className="p-6 border-t flex gap-3">
+                    <input type="text" value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyPress={e=>e.key==='Enter'&&handleReply()} placeholder="اكتب ردك هنا..." className="flex-1 px-6 py-4 rounded-3xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF] font-bold" />
+                    <button onClick={handleReply} className="w-14 h-14 bg-[#00D1FF] text-white rounded-3xl flex items-center justify-center shadow-xl shadow-cyan-500/20 hover:scale-105 transition-transform"><Send size={24} /></button>
                   </div>
                 </>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 opacity-20"><MessageSquare size={80} /><p className="font-black mt-4 text-lg">اختر محادثة للبدء</p></div>
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 opacity-20"><MessageSquare size={100} /><p className="font-black mt-6 text-xl">اختر محادثة للبدء</p></div>
               )}
             </div>
           </div>
@@ -463,62 +470,62 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       case DashboardTab.CATALOG:
         return (
           <div className="space-y-6 animate-in slide-in-from-bottom-6 pb-40">
-            <div className="flex justify-between items-center bg-white p-6 md:p-8 rounded-[40px] border shadow-sm">
-              <div><h3 className="text-xl md:text-2xl font-black text-[#0D2B4D]">كتالوج المنتجات</h3><p className="text-gray-400 font-bold text-sm mt-1">إدارة عرض منتجاتك لعملائك</p></div>
-              <button onClick={() => setIsAddProductModalOpen(true)} className="bg-[#00D1FF] text-white px-6 py-3 md:px-8 md:py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-cyan-100 hover:scale-105 transition-transform text-sm md:text-base"><Plus size={20} /> إضافة منتج</button>
+            <div className="flex justify-between items-center bg-white p-8 rounded-[40px] border shadow-sm">
+              <div><h3 className="text-2xl font-black text-[#0D2B4D]">كتالوج المنتجات</h3><p className="text-gray-400 font-bold mt-1 text-sm md:text-base">إدارة عرض منتجاتك لعملائك</p></div>
+              <button onClick={() => setIsAddProductModalOpen(true)} className="bg-[#00D1FF] text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl shadow-cyan-500/30 hover:scale-105 transition-transform text-sm md:text-base"><Plus size={24} /> إضافة منتج</button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {localProfile.products.map(product => (
-                <div key={product.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border p-4 group hover:shadow-lg transition-all">
-                  <div className="aspect-square relative rounded-[24px] overflow-hidden bg-gray-50 mb-4">
+                <div key={product.id} className="bg-white rounded-[40px] overflow-hidden shadow-sm border p-5 group hover:shadow-xl transition-all duration-300">
+                  <div className="aspect-square relative rounded-[32px] overflow-hidden bg-gray-50 mb-6">
                     <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={product.name} />
-                    <button onClick={() => removeProduct(product.id)} className="absolute top-3 left-3 p-2.5 bg-white/90 text-red-500 rounded-xl shadow-lg hover:bg-red-50 transition-colors"><Trash2 size={18} /></button>
+                    <button onClick={() => removeProduct(product.id)} className="absolute top-4 left-4 p-3 bg-white/90 text-red-500 rounded-2xl shadow-lg hover:bg-red-50 transition-colors"><Trash2 size={20} /></button>
                   </div>
-                  <div className="space-y-1 text-right">
-                    <h4 className="font-black text-gray-800 truncate">{product.name}</h4>
-                    <p className="text-[#00D1FF] font-black text-lg">{product.price} <span className="text-[10px]">{localProfile.currency}</span></p>
+                  <div className="space-y-2 text-right">
+                    <h4 className="font-black text-lg text-[#0D2B4D] truncate">{product.name}</h4>
+                    <p className="text-[#00D1FF] font-black text-xl">{product.price} <span className="text-xs">{localProfile.currency}</span></p>
                   </div>
                 </div>
               ))}
               {localProfile.products.length === 0 && (
-                <div className="col-span-full py-20 text-center text-gray-400 bg-white rounded-[40px] border border-dashed"><Package size={64} className="mx-auto mb-4 opacity-10" /><p className="font-black">لا توجد منتجات حتى الآن</p></div>
+                <div className="col-span-full py-24 text-center text-gray-400 bg-white rounded-[40px] border border-dashed border-gray-200"><Package size={80} className="mx-auto mb-6 opacity-10" /><p className="font-black text-xl">لا توجد منتجات حتى الآن</p></div>
               )}
             </div>
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />} حفظ التغييرات</button>
+            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الكتالوج</button>
             </div>
           </div>
         );
       case DashboardTab.AUTO_REPLY:
         return (
-          <div className="max-w-4xl space-y-6 animate-in slide-in-from-bottom-6 pb-40">
-            <div className="bg-white p-8 rounded-[40px] shadow-sm border">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="w-12 h-12 bg-[#00D1FF]/10 rounded-2xl flex items-center justify-center text-[#00D1FF]">
-                  <Bot size={28} />
+          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40">
+            <div className="bg-white p-10 rounded-[50px] shadow-sm border">
+              <div className="flex items-center gap-5 mb-10">
+                <div className="w-16 h-16 bg-[#00D1FF]/10 rounded-3xl flex items-center justify-center text-[#00D1FF]">
+                  <Bot size={32} />
                 </div>
                 <div>
                   <h3 className="text-2xl font-black text-[#0D2B4D]">الرد الآلي والأسئلة الشائعة</h3>
-                  <p className="text-gray-400 font-bold text-sm">حدد الأسئلة التي تظهر للعملاء في بداية المحادثة</p>
+                  <p className="text-gray-400 font-bold text-sm md:text-base leading-relaxed">حدد الأسئلة التي تظهر للعملاء عند فتح المحادثة لتوفير ردود فورية واحترافية.</p>
                 </div>
               </div>
               
-              <div className="space-y-6 bg-gray-50/50 p-6 rounded-[32px] border">
-                <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-6 bg-gray-50/50 p-8 rounded-[40px] border">
+                <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">السؤال</label>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">السؤال المقترح</label>
                     <input 
-                      className="w-full px-5 py-4 rounded-2xl border bg-white outline-none focus:ring-2 focus:ring-[#00D1FF]/20 font-bold" 
-                      placeholder="مثلاً: ما هي مواعيد العمل؟"
+                      className="w-full px-6 py-5 rounded-3xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" 
+                      placeholder="مثلاً: ما هي طرق الشحن المتوفرة؟"
                       value={newFAQ.question}
                       onChange={e => setNewFAQ({...newFAQ, question: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">الإجابة الآلية</label>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">الإجابة الآلية الفورية</label>
                     <input 
-                      className="w-full px-5 py-4 rounded-2xl border bg-white outline-none focus:ring-2 focus:ring-[#00D1FF]/20 font-bold" 
-                      placeholder="مثلاً: نحن متاحون يومياً من 9 ص حتى 10 م"
+                      className="w-full px-6 py-5 rounded-3xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" 
+                      placeholder="مثلاً: نشحن عبر أرامكس وسمسا خلال 3 أيام عمل."
                       value={newFAQ.answer}
                       onChange={e => setNewFAQ({...newFAQ, answer: e.target.value})}
                     />
@@ -526,92 +533,95 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                 </div>
                 <button 
                   onClick={handleAddFAQ}
-                  className="w-full bg-[#0D2B4D] text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/10 flex items-center justify-center gap-2"
+                  className="w-full bg-[#0D2B4D] text-white py-5 rounded-[28px] font-black text-lg shadow-xl shadow-blue-500/10 flex items-center justify-center gap-3 hover:scale-[1.02] transition-transform"
                 >
-                  <Plus size={20} /> إضافة السؤال للقائمة
+                  <Plus size={24} /> إضافة السؤال للقائمة
                 </button>
               </div>
 
-              <div className="mt-10 space-y-4">
-                <h4 className="font-black text-[#0D2B4D] px-2 mb-4">قائمة الأسئلة المفعلة</h4>
+              <div className="mt-12 space-y-6">
+                <h4 className="font-black text-xl text-[#0D2B4D] px-4">قائمة الأسئلة المفعلة</h4>
                 {localProfile.faqs?.map((faq) => (
-                  <div key={faq.id} className="bg-white p-5 rounded-3xl border shadow-sm flex items-center justify-between group">
+                  <div key={faq.id} className="bg-white p-6 rounded-[32px] border shadow-sm flex items-center justify-between group hover:border-[#00D1FF] transition-colors">
                     <div className="flex-1 text-right">
-                      <p className="font-black text-[#0D2B4D] mb-1">{faq.question}</p>
-                      <p className="text-sm text-gray-500 font-bold">{faq.answer}</p>
+                      <p className="font-black text-[#0D2B4D] text-lg mb-1">{faq.question}</p>
+                      <p className="text-gray-500 font-bold">{faq.answer}</p>
                     </div>
                     <button 
                       onClick={() => removeFAQ(faq.id)}
-                      className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors"
+                      className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-colors"
                     >
-                      <Trash2 size={20} />
+                      <Trash2 size={24} />
                     </button>
                   </div>
                 ))}
                 {(!localProfile.faqs || localProfile.faqs.length === 0) && (
-                  <div className="py-12 text-center text-gray-300 border-2 border-dashed rounded-[32px]">
-                    <Bot size={48} className="mx-auto mb-3 opacity-20" />
-                    <p className="font-bold">لم تضف أي أسئلة للرد الآلي بعد</p>
+                  <div className="py-20 text-center text-gray-300 border-2 border-dashed rounded-[40px] bg-gray-50/30">
+                    <Bot size={64} className="mx-auto mb-4 opacity-10" />
+                    <p className="font-black text-lg">لم تضف أي أسئلة للرد الآلي بعد</p>
+                    <p className="text-sm">ابدأ بإضافة أسئلة ليراها عملاؤك فور دخولهم</p>
                   </div>
                 )}
               </div>
             </div>
             
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />} حفظ الإعدادات</button>
+            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الإعدادات</button>
             </div>
           </div>
         );
       case DashboardTab.CUSTOMIZE:
         return (
           <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40">
-            <div className="bg-white p-8 md:p-10 rounded-[40px] shadow-sm border">
-               <h3 className="text-xl md:text-2xl font-black mb-8 text-[#0D2B4D] flex items-center gap-3"><LinkIcon className="text-[#00D1FF]" /> الرابط المخصص</h3>
-               <div className="flex flex-col md:flex-row items-center gap-2">
-                  <div className="w-full md:w-auto bg-gray-100 px-6 py-4 rounded-2xl font-black text-gray-400 ltr">bazchat.com/</div>
-                  <input className="w-full flex-1 px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]/20 font-black ltr" value={localProfile.slug} onChange={(e) => setLocalProfile({...localProfile, slug: e.target.value.toLowerCase().replace(/[^\w-]/g, '')})} />
+            <div className="bg-white p-10 rounded-[50px] shadow-sm border relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-[#00D1FF]/5 rounded-full -mr-10 -mt-10 blur-3xl"></div>
+               <h3 className="text-2xl font-black mb-8 text-[#0D2B4D] flex items-center gap-4"><LinkIcon className="text-[#00D1FF]" /> الرابط المخصص (Slug)</h3>
+               <div className="flex flex-col md:flex-row items-center gap-3">
+                  <div className="w-full md:w-auto bg-gray-100 px-6 py-5 rounded-3xl font-black text-gray-400 ltr">bazchat.com/#/chat/</div>
+                  <input className="w-full flex-1 px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black ltr text-xl text-[#0D2B4D]" value={localProfile.slug} onChange={(e) => setLocalProfile({...localProfile, slug: e.target.value.toLowerCase().replace(/[^\w-]/g, '')})} />
                </div>
+               <p className="text-sm text-gray-400 mt-4 font-bold flex items-center gap-2"><ImageIcon size={14} /> رابط متجرك المباشر لعملائك ومتابعيك</p>
             </div>
-            <div className="bg-white p-8 md:p-10 rounded-[40px] shadow-sm border">
-              <h3 className="text-xl md:text-2xl font-black mb-10 text-[#0D2B4D] flex items-center gap-3"><Palette className="text-[#00D1FF]" /> الهوية البصرية</h3>
+            <div className="bg-white p-10 rounded-[50px] shadow-sm border">
+              <h3 className="text-2xl font-black mb-10 text-[#0D2B4D] flex items-center gap-4"><Palette className="text-[#00D1FF]" /> الهوية البصرية</h3>
               <div className="space-y-8">
-                <div className="flex flex-col md:flex-row gap-8 items-center bg-gray-50/50 p-6 rounded-[32px]">
-                  <div className="w-32 h-32 rounded-[32px] overflow-hidden border-4 border-white bg-white shrink-0 shadow-sm"><img src={localProfile.logo} className="w-full h-full object-cover" /></div>
-                  <div className="flex-1 w-full space-y-2 text-right">
-                    <label className="text-xs font-black text-gray-400 uppercase">رابط الشعار</label>
-                    <input className="w-full px-5 py-4 rounded-2xl border bg-white outline-none font-bold" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />
+                <div className="flex flex-col md:flex-row gap-10 items-center bg-gray-50/50 p-8 rounded-[40px]">
+                  <div className="w-40 h-40 rounded-[45px] overflow-hidden border-4 border-white shadow-xl bg-white shrink-0 p-1 shadow-md"><img src={localProfile.logo} className="w-full h-full object-cover rounded-[40px]" alt="Logo" /></div>
+                  <div className="flex-1 w-full space-y-3 text-right">
+                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">رابط شعار المتجر</label>
+                    <input className="w-full px-6 py-4 rounded-2xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />
                   </div>
                 </div>
-                <div className="grid md:grid-cols-2 gap-6 text-right">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase">اسم المتجر</label>
-                    <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none font-black" value={localProfile.name} onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})} />
+                <div className="grid md:grid-cols-2 gap-8 text-right">
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">اسم المنشأة</label>
+                    <input className="w-full px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={localProfile.name} onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase">اسم المالك</label>
-                    <input className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none font-black" value={localProfile.ownerName} onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})} />
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">اسم المالك</label>
+                    <input className="w-full px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={localProfile.ownerName} onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})} />
                   </div>
                 </div>
-                <div className="space-y-2 text-right">
-                  <label className="text-xs font-black text-gray-400 uppercase">النبذة التعريفية</label>
-                  <textarea className="w-full px-5 py-4 rounded-[32px] border bg-gray-50 outline-none font-bold h-32 resize-none leading-relaxed" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />
+                <div className="space-y-3 text-right">
+                  <label className="text-xs font-black text-gray-400 tracking-widest uppercase">النبذة التعريفية</label>
+                  <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold h-40 resize-none leading-relaxed" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />
                 </div>
               </div>
             </div>
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />} حفظ الهوية</button>
+            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الهوية</button>
             </div>
           </div>
         );
       case DashboardTab.SETTINGS:
         return (
-          <div className="max-w-3xl space-y-6 animate-in slide-in-from-bottom-6 pb-20">
-            <div className="bg-white p-8 md:p-10 rounded-[40px] shadow-sm border relative">
+          <div className="max-w-3xl space-y-8 animate-in slide-in-from-bottom-6 pb-40">
+            <div className="bg-white p-10 rounded-[50px] shadow-sm border relative">
                <h3 className="text-xl md:text-2xl font-black mb-10 text-[#0D2B4D] text-right">الإعدادات والسياسات</h3>
-               <div className="space-y-6 text-right">
-                 <div className="space-y-2">
+               <div className="space-y-8 text-right">
+                 <div className="space-y-3">
                     <label className="text-xs font-black text-gray-400 uppercase">عملة المتجر</label>
-                    <select className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none font-black" value={localProfile.currency} onChange={(e) => setLocalProfile({...localProfile, currency: e.target.value})}>
+                    <select className="w-full px-6 py-5 rounded-3xl border bg-gray-50 outline-none font-black text-lg appearance-none cursor-pointer" value={localProfile.currency} onChange={(e) => setLocalProfile({...localProfile, currency: e.target.value})}>
                       <option value="SAR">SAR - ريال سعودي</option>
                       <option value="AED">AED - درهم إماراتي</option>
                       <option value="KWD">KWD - دينار كويتي</option>
@@ -619,23 +629,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                       <option value="USD">USD - دولار أمريكي</option>
                     </select>
                  </div>
-                 <div className="space-y-2">
+                 <div className="space-y-3">
                     <label className="text-xs font-black text-gray-400 uppercase">سياسة الاسترجاع</label>
-                    <textarea className="w-full px-5 py-4 rounded-[28px] border bg-gray-50 outline-none font-bold h-32" value={localProfile.returnPolicy} onChange={(e) => setLocalProfile({...localProfile, returnPolicy: e.target.value})} />
+                    <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none font-bold h-32 leading-relaxed" value={localProfile.returnPolicy} onChange={(e) => setLocalProfile({...localProfile, returnPolicy: e.target.value})} />
                  </div>
-                 <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase">سياسة التوصيل</label>
-                    <textarea className="w-full px-5 py-4 rounded-[28px] border bg-gray-50 outline-none font-bold h-32" value={localProfile.deliveryPolicy} onChange={(e) => setLocalProfile({...localProfile, deliveryPolicy: e.target.value})} />
+                 <div className="space-y-3">
+                    <label className="text-xs font-black text-gray-400 uppercase">سياسة الشحن والتوصيل</label>
+                    <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none font-bold h-32 leading-relaxed" value={localProfile.deliveryPolicy} onChange={(e) => setLocalProfile({...localProfile, deliveryPolicy: e.target.value})} />
                  </div>
                </div>
             </div>
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />} حفظ الإعدادات</button>
+            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الإعدادات</button>
             </div>
-            <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-6 rounded-[32px] font-black flex items-center justify-center gap-3 border border-red-100 hover:bg-red-100 transition-colors"><LogOut size={24} /> تسجيل الخروج النهائي</button>
+            <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-6 rounded-[32px] font-black flex items-center justify-center gap-4 border border-red-100 hover:bg-red-100 transition-colors shadow-sm"><LogOut size={24} /> تسجيل الخروج النهائي</button>
           </div>
         );
-      default: return <div className="p-20 text-center font-black text-gray-300 animate-pulse">جاري التحميل...</div>;
+      default: return <div className="p-20 text-center font-black text-gray-300 animate-pulse">جاري تحميل المحتوى...</div>;
     }
   };
 
@@ -643,44 +653,56 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row font-tajawal text-right overflow-x-hidden">
       <audio ref={remoteAudioRef} autoPlay className="hidden" />
 
-      {/* Sidebar Mobile Overlay */}
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
       )}
 
       {/* Sidebar */}
-      <aside className={`w-72 bg-[#0D2B4D] text-white fixed h-full flex flex-col p-8 z-[110] transition-transform duration-300 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0 shadow-2xl lg:shadow-none'}`}>
-        <div className="flex items-center justify-between mb-12">
-          <div className="flex items-center gap-3">
-            <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-10"/>
-            <span className="text-xl font-black">بازشات</span>
+      <aside className={`w-80 bg-[#0D2B4D] text-white fixed h-full flex flex-col p-10 z-[110] transition-transform duration-300 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0 shadow-2xl'}`}>
+        <div className="flex items-center justify-between mb-16">
+          <div className="flex items-center gap-4">
+            <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-12"/>
+            <span className="text-2xl font-black">بازشات</span>
           </div>
-          <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}><X size={24} /></button>
+          <button className="lg:hidden text-gray-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+            <X size={28} />
+          </button>
         </div>
-        <nav className="flex-1 space-y-2">
-          <NavItem active={activeTab===DashboardTab.OVERVIEW} onClick={()=>{setActiveTab(DashboardTab.OVERVIEW); setIsSidebarOpen(false)}} icon={<LayoutDashboard size={20}/>} label="الرئيسية"/>
-          <NavItem active={activeTab===DashboardTab.MESSAGES} onClick={()=>{setActiveTab(DashboardTab.MESSAGES); setIsSidebarOpen(false)}} icon={<MessageSquare size={20}/>} label="المحادثات" badge={totalUnread||undefined}/>
-          <NavItem active={activeTab===DashboardTab.CATALOG} onClick={()=>{setActiveTab(DashboardTab.CATALOG); setIsSidebarOpen(false)}} icon={<Package size={20}/>} label="المنتجات"/>
-          <NavItem active={activeTab===DashboardTab.AUTO_REPLY} onClick={()=>{setActiveTab(DashboardTab.AUTO_REPLY); setIsSidebarOpen(false)}} icon={<Bot size={20}/>} label="الرد الآلي"/>
-          <NavItem active={activeTab===DashboardTab.CUSTOMIZE} onClick={()=>{setActiveTab(DashboardTab.CUSTOMIZE); setIsSidebarOpen(false)}} icon={<Palette size={20}/>} label="الهوية"/>
-          <NavItem active={activeTab===DashboardTab.SETTINGS} onClick={()=>{setActiveTab(DashboardTab.SETTINGS); setIsSidebarOpen(false)}} icon={<Settings size={20}/>} label="الإعدادات"/>
+        <nav className="flex-1 space-y-3">
+          <NavItem active={activeTab===DashboardTab.OVERVIEW} onClick={()=>{setActiveTab(DashboardTab.OVERVIEW); setIsSidebarOpen(false)}} icon={<LayoutDashboard size={22}/>} label="الرئيسية"/>
+          <NavItem active={activeTab===DashboardTab.MESSAGES} onClick={()=>{setActiveTab(DashboardTab.MESSAGES); setIsSidebarOpen(false)}} icon={<MessageSquare size={22}/>} label="المحادثات" badge={totalUnread||undefined}/>
+          <NavItem active={activeTab===DashboardTab.CATALOG} onClick={()=>{setActiveTab(DashboardTab.CATALOG); setIsSidebarOpen(false)}} icon={<Package size={22}/>} label="المنتجات"/>
+          <NavItem active={activeTab===DashboardTab.AUTO_REPLY} onClick={()=>{setActiveTab(DashboardTab.AUTO_REPLY); setIsSidebarOpen(false)}} icon={<Bot size={22}/>} label="الرد الآلي"/>
+          <NavItem active={activeTab===DashboardTab.CUSTOMIZE} onClick={()=>{setActiveTab(DashboardTab.CUSTOMIZE); setIsSidebarOpen(false)}} icon={<Palette size={22}/>} label="الهوية"/>
+          <NavItem active={activeTab===DashboardTab.SETTINGS} onClick={()=>{setActiveTab(DashboardTab.SETTINGS); setIsSidebarOpen(false)}} icon={<Settings size={22}/>} label="الإعدادات"/>
         </nav>
-        <button onClick={onLogout} className="mt-auto flex items-center gap-4 px-5 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl transition-all font-black"><LogOut size={20}/> خروج</button>
+        <button onClick={onLogout} className="mt-auto flex items-center gap-4 px-6 py-5 text-red-400 hover:bg-red-500/10 rounded-3xl transition-all font-black group">
+          <LogOut size={22} className="group-hover:-translate-x-1 transition-transform"/> خروج
+        </button>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:mr-72 p-4 md:p-10 text-right w-full">
-        {/* Mobile Header Bar */}
-        <header className="lg:hidden flex items-center justify-between mb-8 bg-white p-4 rounded-3xl border shadow-sm">
-           <div className="flex items-center gap-2"><img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-8"/><span className="text-lg font-black text-[#0D2B4D]">بازشات</span></div>
-           <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-gray-50 rounded-xl text-gray-500"><Menu size={24} /></button>
+      <main className="flex-1 lg:mr-80 p-6 md:p-12 text-right w-full">
+        {/* Mobile Navbar */}
+        <header className="lg:hidden flex items-center justify-between mb-8 bg-white p-5 rounded-[32px] border shadow-sm sticky top-4 z-40">
+           <div className="flex items-center gap-3">
+              <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-10"/>
+              <span className="text-xl font-black text-[#0D2B4D]">بازشات</span>
+           </div>
+           <button onClick={() => setIsSidebarOpen(true)} className="p-3 bg-gray-50 rounded-2xl text-[#0D2B4D] border shadow-sm">
+             <Menu size={28} />
+           </button>
         </header>
 
-        <header className="hidden lg:flex items-center justify-between mb-12">
-          <div><h2 className="text-4xl font-black text-[#0D2B4D]">مرحباً، {localProfile.ownerName}</h2><p className="text-gray-400 font-bold mt-2">إدارة متجر <span className="text-[#00D1FF] font-black">{localProfile.name}</span></p></div>
+        <header className="hidden lg:flex items-center justify-between mb-16">
+          <div>
+            <h2 className="text-5xl font-black text-[#0D2B4D] leading-tight">مرحباً، {localProfile.ownerName} 👋</h2>
+            <p className="text-gray-400 font-bold mt-3 text-lg">أنت تدير متجر <span className="text-[#00D1FF] font-black">{localProfile.name}</span> باحترافية</p>
+          </div>
           <div className="flex gap-4">
-            <button onClick={()=>{navigator.clipboard.writeText(`${window.location.origin}/#/chat/${localProfile.slug||localProfile.id}`); alert('تم النسخ');}} className="bg-white border px-6 py-4 rounded-2xl font-black text-[#0D2B4D] flex items-center gap-2 shadow-sm"><Copy size={20}/> نسخ الرابط</button>
-            <button onClick={()=>window.open(`${window.location.origin}/#/chat/${localProfile.slug||localProfile.id}`, '_blank')} className="bg-[#0D2B4D] text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 shadow-xl shadow-cyan-500/10 hover:scale-105 transition-all"><ExternalLink size={20}/> معاينة</button>
+            <button onClick={()=>{navigator.clipboard.writeText(`${window.location.origin}/#/chat/${localProfile.slug||localProfile.id}`); alert('تم النسخ');}} className="bg-white border-2 border-gray-100 px-8 py-5 rounded-3xl font-black text-[#0D2B4D] flex items-center gap-3 hover:bg-gray-50 transition-colors shadow-sm"><Copy size={22}/> نسخ الرابط</button>
+            <button onClick={()=>window.open(`${window.location.origin}/#/chat/${localProfile.slug||localProfile.id}`, '_blank')} className="bg-[#0D2B4D] text-white px-10 py-5 rounded-3xl font-black flex items-center gap-3 shadow-2xl shadow-blue-500/20 hover:scale-105 transition-all"><ExternalLink size={22}/> معاينة المتجر</button>
           </div>
         </header>
 
@@ -689,57 +711,71 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
       </main>
 
-      {/* Modals & Toasts */}
+      {/* Modals & UI feedback */}
       {isAddProductModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-sm" onClick={() => setIsAddProductModalOpen(false)}></div>
-          <div className="relative bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl text-right animate-in zoom-in-95">
+          <div className="absolute inset-0 bg-[#0D2B4D]/70 backdrop-blur-md" onClick={() => setIsAddProductModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-lg rounded-[50px] p-10 shadow-2xl text-right animate-in zoom-in-95">
             <h3 className="text-2xl font-black mb-8 text-[#0D2B4D]">إضافة منتج جديد</h3>
-            <div className="space-y-5">
-              <div className="space-y-2"><label className="text-xs font-black text-gray-400 uppercase">اسم المنتج</label><input type="text" className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]/20 font-black" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} /></div>
-              <div className="space-y-2"><label className="text-xs font-black text-gray-400 uppercase">السعر ({localProfile.currency})</label><input type="number" className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]/20 font-black" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} /></div>
-              <div className="space-y-2"><label className="text-xs font-black text-gray-400 uppercase">رابط الصورة</label><input type="text" className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-2 focus:ring-[#00D1FF]/20 font-bold" value={newProduct.image} onChange={e => setNewProduct({...newProduct, image: e.target.value})} /></div>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">اسم المنتج</label>
+                <input type="text" className="w-full px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">السعر ({localProfile.currency})</label>
+                <input type="number" className="w-full px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">رابط صورة المنتج</label>
+                <input type="text" className="w-full px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold" value={newProduct.image} onChange={e => setNewProduct({...newProduct, image: e.target.value})} />
+              </div>
             </div>
             <div className="flex gap-4 mt-10">
-              <button onClick={handleAddProduct} className="flex-1 bg-[#00D1FF] text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-cyan-100">إضافة المنتج</button>
-              <button onClick={() => setIsAddProductModalOpen(false)} className="px-6 bg-gray-100 text-gray-500 py-4 rounded-2xl font-black">إلغاء</button>
+              <button onClick={handleAddProduct} className="flex-1 bg-[#00D1FF] text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-cyan-500/30">تأكيد الإضافة</button>
+              <button onClick={() => setIsAddProductModalOpen(false)} className="px-8 bg-gray-100 text-gray-500 py-5 rounded-3xl font-black">إلغاء</button>
             </div>
           </div>
         </div>
       )}
 
       {showSaveToast && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 bg-green-500 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-3 z-[999] animate-in slide-in-from-top-10">
-          <CheckCircle2 size={24} /> <span className="font-black">تم حفظ التعديلات بنجاح!</span>
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-green-500 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-3 z-[999] animate-in slide-in-from-top-12">
+          <CheckCircle2 size={24} /> <span className="font-black text-lg">تم حفظ التعديلات بنجاح!</span>
         </div>
       )}
 
-      {/* Call System (Same as before but refined for stability) */}
       {callStatus !== 'idle' && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-2xl"></div>
-          <div className="relative bg-white/10 w-full max-w-sm rounded-[50px] p-10 shadow-2xl border border-white/20 text-center text-white animate-in zoom-in-95">
-             <div className="mb-10"><div className="w-32 h-32 rounded-[40px] overflow-hidden mx-auto border-4 border-white/20 p-1 bg-white/10 relative z-10 shadow-2xl shadow-cyan-500/20"><img src={localProfile.logo} className="w-full h-full object-cover rounded-[34px]" /></div></div>
-             <h3 className="text-2xl font-black mb-2">{activeSessions.find(s=>s.id===activeCallSessionId)?.customerName || 'عميل بازشات'}</h3>
-             <p className="text-cyan-400 font-black text-sm uppercase tracking-widest mb-12">
-               {callStatus === 'calling' && 'جاري الاتصال...'}
-               {callStatus === 'incoming' && 'مكالمة واردة...'}
-               {callStatus === 'connected' && formatDuration(callDuration)}
-             </p>
-             <div className="flex items-center justify-center gap-8">
-               {callStatus === 'incoming' ? (
-                 <>
-                   <button onClick={() => handleEndCall(true)} className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center shadow-xl"><PhoneOff size={28}/></button>
-                   <button onClick={handleAcceptCall} className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-xl animate-bounce"><PhoneCall size={28}/></button>
-                 </>
-               ) : (
-                 <>
-                   <button onClick={() => setIsMuted(!isMuted)} className={`w-14 h-14 rounded-full flex items-center justify-center border-2 ${isMuted?'bg-white text-black':'border-white/20'}`}>{isMuted?<MicOff size={22}/>:<Mic size={22}/>}</button>
-                   <button onClick={() => handleEndCall(true)} className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center shadow-xl"><PhoneOff size={32}/></button>
-                   <button className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center border-2 border-white/20"><Volume2 size={22}/></button>
-                 </>
-               )}
-             </div>
+          <div className="absolute inset-0 bg-black/85 backdrop-blur-[40px] animate-in fade-in duration-500"></div>
+          <div className="relative bg-white/10 w-full max-w-sm rounded-[60px] p-12 shadow-2xl border border-white/20 text-center text-white animate-in zoom-in-95">
+            <div className="mb-10 relative">
+              <div className="w-40 h-40 rounded-[50px] overflow-hidden mx-auto border-8 border-white/10 p-1 bg-white/5 relative z-10 shadow-2xl shadow-cyan-500/20">
+                <img src={localProfile.logo} className="w-full h-full object-cover rounded-[42px]" alt="Logo" />
+              </div>
+              {callStatus === 'connected' && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-cyan-400/40 rounded-full animate-ping"></div>}
+            </div>
+            <h3 className="text-3xl font-black mb-3">{activeSessions.find(s=>s.id===activeCallSessionId)?.customerName || 'عميل بازشات'}</h3>
+            <p className="text-cyan-400 font-black text-sm tracking-[0.2em] uppercase mb-12 flex items-center justify-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              {callStatus === 'calling' && 'جاري الاتصال...'}
+              {callStatus === 'incoming' && 'مكالمة واردة...'}
+              {callStatus === 'connected' && formatDuration(callDuration)}
+            </p>
+            <div className="flex items-center justify-center gap-8">
+              {callStatus === 'incoming' ? (
+                <>
+                  <button onClick={() => handleEndCall(true)} className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform"><PhoneOff size={32} /></button>
+                  <button onClick={handleAcceptCall} className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-2xl animate-bounce hover:scale-110 transition-transform"><PhoneCall size={32} /></button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setIsMuted(!isMuted)} className={`w-16 h-16 rounded-full flex items-center justify-center border-2 transition-all ${isMuted?'bg-white text-black':'border-white/20 hover:bg-white/10'}`}>{isMuted?<MicOff size={24}/>:<Mic size={24}/>}</button>
+                  <button onClick={() => handleEndCall(true)} className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center shadow-2xl shadow-red-500/30 hover:scale-110 transition-transform active:scale-95"><PhoneOff size={36} /></button>
+                  <button className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center border-2 border-white/20 hover:bg-white/20 transition-all"><Volume2 size={24}/></button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -748,16 +784,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 };
 
 const NavItem: React.FC<{active:boolean, onClick:()=>void, icon:React.ReactNode, label:string, badge?:number}> = ({ active, onClick, icon, label, badge }) => (
-  <button onClick={onClick} className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl font-black transition-all ${active ? 'bg-[#00D1FF] text-white shadow-xl shadow-cyan-500/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+  <button onClick={onClick} className={`w-full flex items-center justify-between px-6 py-5 rounded-[26px] font-black transition-all ${active ? 'bg-[#00D1FF] text-white shadow-xl shadow-cyan-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
     <div className="flex items-center gap-4">{icon}{label}</div>
-    {badge !== undefined && badge > 0 && <span className="bg-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{badge}</span>}
+    {badge !== undefined && badge > 0 && <span className="bg-red-500 text-white text-[10px] w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-pulse">{badge}</span>}
   </button>
 );
 
 const StatCard: React.FC<{icon:React.ReactNode, label:string, value:string, sub:string}> = ({ icon, label, value, sub }) => (
-  <div className="bg-white p-5 md:p-6 rounded-[32px] shadow-sm border text-right">
-    <div className="flex items-center gap-2 mb-4 justify-end"><span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{label}</span><div className="p-2.5 bg-gray-50 rounded-xl text-[#0D2B4D]">{icon}</div></div>
-    <div className="text-2xl md:text-3xl font-black text-[#0D2B4D] mb-1">{value}</div><div className={`text-[10px] font-black ${sub.includes('+')?'text-green-500':'text-red-500'}`}>{sub}</div>
+  <div className="bg-white p-7 rounded-[40px] shadow-sm border border-gray-50 text-right hover:shadow-md transition-all">
+    <div className="flex items-center gap-3 mb-5 justify-end">
+      <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{label}</span>
+      <div className="p-3 bg-gray-50 rounded-2xl text-[#0D2B4D]">{icon}</div>
+    </div>
+    <div className="text-3xl font-black text-[#0D2B4D] mb-1 tracking-tight">{value}</div>
+    <div className={`text-[11px] font-black ${sub.includes('+')?'text-green-500':'text-red-500'} flex items-center justify-end gap-1`}>
+       {sub.includes('+') ? <ChevronLeft size={10} className="rotate-90" /> : <ChevronLeft size={10} className="-rotate-90" />} {sub}
+    </div>
   </div>
 );
 

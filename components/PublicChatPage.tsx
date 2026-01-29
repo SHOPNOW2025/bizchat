@@ -14,7 +14,9 @@ import {
   Bot,
   X,
   MessageCircle,
-  Package
+  Package,
+  CheckCircle2,
+  User as UserIcon
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -34,6 +36,8 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [currentCallId, setCurrentCallId] = useState<string | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
   const [isBotThinking, setIsBotThinking] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
+  const [onboardingStep, setOnboardingStep] = useState<'none' | 'name' | 'phone' | 'done'>('none');
 
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
@@ -44,20 +48,53 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
 
+  // Initial Logic: Load messages and check session data
   useEffect(() => {
     localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
-    // تسجيل الجلسة في قاعدة البيانات إذا لم تكن موجودة
-    const regSession = async () => {
+    
+    const initSession = async () => {
       try {
-        await sql`
-          INSERT INTO chat_sessions (id, profile_id, customer_name, customer_phone)
-          VALUES (${chatSessionId.current}, ${profile.id}, 'عميل بازشات', '')
-          ON CONFLICT (id) DO NOTHING
-        `;
-      } catch (e) {}
+        const rows = await sql`SELECT * FROM chat_sessions WHERE id = ${chatSessionId.current}`;
+        
+        if (rows.length === 0) {
+          await sql`
+            INSERT INTO chat_sessions (id, profile_id, customer_name, customer_phone)
+            VALUES (${chatSessionId.current}, ${profile.id}, 'عميل بازشات', '')
+          `;
+          setOnboardingStep('name');
+          triggerOnboardingBot('name');
+        } else {
+          const s = rows[0];
+          setCustomerInfo({ name: s.customer_name || '', phone: s.customer_phone || '' });
+          if (!s.customer_name || s.customer_name === 'عميل بازشات') {
+            setOnboardingStep('name');
+            triggerOnboardingBot('name');
+          } else if (!s.customer_phone) {
+            setOnboardingStep('phone');
+            triggerOnboardingBot('phone');
+          } else {
+            setOnboardingStep('done');
+          }
+        }
+      } catch (e) {
+        console.error("Session init failed", e);
+      }
     };
-    regSession();
+    initSession();
   }, [profile.id]);
+
+  const triggerOnboardingBot = (step: 'name' | 'phone') => {
+    setIsBotThinking(true);
+    setTimeout(async () => {
+      setIsBotThinking(false);
+      let text = '';
+      if (step === 'name') text = "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟";
+      else if (step === 'phone') text = "تشرفنا بك! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك.";
+      
+      const botMsg: Message = { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() };
+      setMessages(prev => [...prev, botMsg]);
+    }, 1000);
+  };
 
   const playSound = (url: string) => { new Audio(url).play().catch(() => {}); };
 
@@ -167,14 +204,50 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     if (!txt.trim()) return;
     if (!customText) setInputValue('');
     playSound(SEND_SOUND);
+
     try {
+      // Logic for Onboarding
+      if (onboardingStep === 'name') {
+        const name = txt.trim();
+        await sql`UPDATE chat_sessions SET customer_name = ${name}, last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
+        await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
+        setCustomerInfo(prev => ({ ...prev, name }));
+        setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
+        setOnboardingStep('phone');
+        triggerOnboardingBot('phone');
+        return;
+      } else if (onboardingStep === 'phone') {
+        const phone = txt.trim();
+        await sql`UPDATE chat_sessions SET customer_phone = ${phone}, last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
+        await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
+        setCustomerInfo(prev => ({ ...prev, phone }));
+        setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
+        setOnboardingStep('done');
+        
+        setIsBotThinking(true);
+        setTimeout(() => {
+          setIsBotThinking(false);
+          const confirmText = "شكراً لك! تم حفظ بياناتك بنجاح. كيف يمكنني مساعدتك اليوم؟";
+          sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${confirmText})`;
+          setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: confirmText, timestamp: new Date() }]);
+        }, 1000);
+        return;
+      }
+
+      // Normal Message
       await sql`UPDATE chat_sessions SET last_text = ${txt}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
       await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
       setMessages(prev => [...prev, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() }]);
-    } catch (e) {}
+    } catch (e) {
+      console.error("Message send failed", e);
+    }
   };
 
   const handleFAQClick = async (faq: FAQ) => {
+    if (onboardingStep !== 'done') {
+      alert("يرجى إكمال إدخال اسمك ورقم هاتفك أولاً");
+      return;
+    }
     // 1. Send the question as customer message
     await handleSend(faq.question);
     
@@ -257,58 +330,58 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       {/* Main Header */}
       <header className="bg-white/80 backdrop-blur-md p-4 flex items-center justify-between border-b shadow-sm sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-white shrink-0"><img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" /></div>
+          <div className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-white shrink-0 shadow-cyan-100"><img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" /></div>
           <div className="overflow-hidden">
             <h1 className="font-black text-base text-[#0D2B4D] truncate">{profile.name}</h1>
             <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Online</span></div>
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={handleStartCall} disabled={callStatus !== 'idle'} className="w-10 h-10 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center border border-green-100 disabled:opacity-50 active:scale-90 transition-transform"><PhoneCall size={18} /></button>
-          <button onClick={() => setShowCatalog(true)} className="w-10 h-10 rounded-2xl bg-[#00D1FF] text-white flex items-center justify-center shadow-lg shadow-cyan-100 active:scale-90 transition-transform"><ShoppingBag size={18} /></button>
+          <button onClick={handleStartCall} disabled={callStatus !== 'idle'} className="w-11 h-11 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center border border-green-100 disabled:opacity-50 active:scale-90 transition-transform"><PhoneCall size={20} /></button>
+          <button onClick={() => setShowCatalog(true)} className="w-11 h-11 rounded-2xl bg-[#00D1FF] text-white flex items-center justify-center shadow-xl shadow-cyan-500/10 active:scale-90 transition-transform"><ShoppingBag size={20} /></button>
         </div>
       </header>
 
       {/* Chat History */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50/20">
+      <main className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50/20">
         {messages.length === 0 && (
-          <div className="text-center py-10 px-6 animate-in fade-in duration-700">
-             <div className="w-20 h-20 bg-[#00D1FF]/10 rounded-[30px] flex items-center justify-center text-[#00D1FF] mx-auto mb-6"><MessageCircle size={40}/></div>
-             <h3 className="text-xl font-black text-[#0D2B4D] mb-2">أهلاً بك في بازشات {profile.name}</h3>
+          <div className="text-center py-10 px-6 animate-in fade-in duration-1000">
+             <div className="w-24 h-24 bg-[#00D1FF]/10 rounded-[40px] flex items-center justify-center text-[#00D1FF] mx-auto mb-8 shadow-inner"><MessageCircle size={48}/></div>
+             <h3 className="text-2xl font-black text-[#0D2B4D] mb-3">أهلاً بك في بازشات {profile.name}</h3>
              <p className="text-gray-400 text-sm font-bold leading-relaxed">{profile.description || 'يمكنك طرح استفساراتك أو تصفح منتجاتنا، يسعدنا خدمتك دائماً.'}</p>
           </div>
         )}
 
         {messages.map((m, idx) => (
           <div key={m.id} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
-            <div className={`max-w-[85%] p-4 rounded-[26px] text-sm font-bold shadow-sm ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
+            <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
               <p className="leading-relaxed">{m.text}</p>
-              <div className="text-[9px] mt-2 opacity-60 text-left font-black">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+              <div className="text-[10px] mt-2 opacity-50 text-left font-black tracking-tighter uppercase">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
             </div>
           </div>
         ))}
         
         {isBotThinking && (
           <div className="flex justify-start animate-pulse">
-            <div className="bg-white border p-3 rounded-2xl rounded-tl-none flex gap-1">
-              <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce"></div>
-              <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce delay-100"></div>
-              <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce delay-200"></div>
+            <div className="bg-white border p-4 rounded-3xl rounded-tl-none flex gap-1.5 shadow-sm">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-150"></div>
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-300"></div>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Bot / FAQ Actions */}
-      {profile.faqs && profile.faqs.length > 0 && messages.length < 10 && (
-        <div className="bg-white/50 px-4 py-3 flex gap-2 overflow-x-auto no-scrollbar border-t border-gray-50 shrink-0">
-          <div className="w-8 h-8 bg-[#0D2B4D] text-white rounded-full flex items-center justify-center shrink-0 shadow-lg"><Bot size={18}/></div>
+      {/* Auto-Reply / FAQ Quick Chips */}
+      {onboardingStep === 'done' && profile.faqs && profile.faqs.length > 0 && messages.length < 20 && (
+        <div className="bg-white/80 backdrop-blur-sm px-4 py-4 flex gap-3 overflow-x-auto no-scrollbar border-t border-gray-50 shrink-0">
+          <div className="w-10 h-10 bg-[#0D2B4D] text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10"><Bot size={22}/></div>
           {profile.faqs.map((faq) => (
             <button 
               key={faq.id} 
               onClick={() => handleFAQClick(faq)}
-              className="bg-white border px-4 py-2 rounded-2xl text-xs font-black text-gray-700 whitespace-nowrap shadow-sm hover:border-[#00D1FF] transition-colors"
+              className="bg-white border-2 border-gray-50 px-5 py-2.5 rounded-[20px] text-xs font-black text-gray-700 whitespace-nowrap shadow-sm hover:border-[#00D1FF] hover:bg-cyan-50/30 transition-all active:scale-95"
             >
               {faq.question}
             </button>
@@ -317,27 +390,54 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       )}
 
       {/* Input Footer */}
-      <footer className="p-4 bg-white border-t safe-area-bottom">
-        <div className="flex items-center gap-2">
-          <input 
-            type="text" 
-            value={inputValue} 
-            onChange={e=>setInputValue(e.target.value)} 
-            onKeyPress={e=>e.key==='Enter'&&handleSend()} 
-            placeholder="اكتب استفسارك هنا..." 
-            className="flex-1 px-5 py-4 rounded-[22px] bg-gray-50 border outline-none text-right font-bold text-sm focus:ring-2 focus:ring-[#00D1FF]/10 transition-all" 
-          />
+      <footer className="p-4 bg-white border-t safe-area-bottom shadow-2xl">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative">
+            <input 
+              type={onboardingStep === 'phone' ? 'tel' : 'text'}
+              value={inputValue} 
+              onChange={e=>setInputValue(e.target.value)} 
+              onKeyPress={e=>e.key==='Enter'&&handleSend()} 
+              placeholder={
+                onboardingStep === 'name' ? 'أدخل اسمك هنا...' :
+                onboardingStep === 'phone' ? 'أدخل رقم هاتفك هنا...' :
+                "اكتب استفسارك هنا..."
+              }
+              className="w-full px-6 py-4 rounded-[26px] bg-gray-50 border-2 border-transparent outline-none text-right font-black text-sm focus:border-[#00D1FF]/30 focus:bg-white transition-all shadow-inner" 
+            />
+            {onboardingStep !== 'done' && (
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#00D1FF] flex items-center gap-1.5 font-black text-[10px] uppercase">
+                <span className="w-1.5 h-1.5 bg-[#00D1FF] rounded-full animate-ping"></span>
+                إجباري
+              </div>
+            )}
+          </div>
           <button 
             onClick={() => handleSend()} 
             disabled={!inputValue.trim()} 
-            className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[22px] flex items-center justify-center shadow-xl shadow-blue-500/10 active:scale-90 transition-all disabled:opacity-50"
+            className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl shadow-blue-500/20 active:scale-90 transition-all disabled:opacity-50"
           >
-            <Send size={24} className="-rotate-45" />
+            <Send size={26} className="-rotate-45" />
           </button>
+        </div>
+        
+        {/* Verification Badge */}
+        <div className="flex justify-center mt-3">
+          <div className="flex items-center gap-1.5 text-gray-400 text-[9px] font-bold">
+            <ShieldCheck size={12} className="text-green-500" />
+            <span>مدعوم بواسطة بازشات - محادثة آمنة ومشفرة</span>
+          </div>
         </div>
       </footer>
     </div>
   );
 };
+
+const ShieldCheck = ({ size, className }: { size: number, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
 
 export default PublicChatPage;
