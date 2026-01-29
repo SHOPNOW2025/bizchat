@@ -64,10 +64,11 @@ export const initTables = async () => {
       )
     `;
 
-    // تحديث جدول المكالمات ليشمل مسارات ICE منفصلة
+    // تطوير جدول المكالمات لدعم نظام المعرفات الفريدة للمكالمة (Call Instance ID)
     await sql`
       CREATE TABLE IF NOT EXISTS voice_calls (
         session_id TEXT PRIMARY KEY,
+        call_id TEXT, -- معرف فريد للجلسة الحالية لمنع التداخل
         status TEXT DEFAULT 'idle',
         caller_role TEXT,
         offer JSONB,
