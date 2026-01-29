@@ -14,12 +14,17 @@ import {
   User as UserIcon,
   Twitter,
   Facebook,
-  CheckCircle2
+  CheckCircle2,
+  Volume2
 } from 'lucide-react';
 
 interface PublicChatPageProps {
   profile: BusinessProfile;
 }
+
+// روابط الأصوات
+const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
+const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3';
 
 const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -33,7 +38,13 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [customerPhone, setCustomerPhone] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesCount = useRef<number | null>(null);
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
+
+  const playSound = (url: string) => {
+    const audio = new Audio(url);
+    audio.play().catch(e => console.debug("Audio play blocked by browser"));
+  };
 
   // Check if lead info is already provided
   useEffect(() => {
@@ -105,13 +116,25 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           ORDER BY timestamp ASC
         `;
         
-        if (msgs.length === 0) {
+        const newMessages = msgs.map(m => ({ ...m, timestamp: new Date(m.timestamp) })) as Message[];
+        
+        // منطق التنبيه الصوتي عند استقبال رد من صاحب المتجر
+        if (prevMessagesCount.current !== null && newMessages.length > prevMessagesCount.current) {
+          const lastMsg = newMessages[newMessages.length - 1];
+          if (lastMsg.sender === 'owner') {
+            playSound(RECEIVE_SOUND);
+          }
+        }
+
+        if (newMessages.length === 0 && !prevMessagesCount.current) {
           setMessages([
             { id: 'welcome', sender: 'owner', text: `مرحباً بك في ${profile.name}! كيف يمكنني مساعدتك اليوم؟`, timestamp: new Date() }
           ]);
         } else {
-          setMessages(msgs.map(m => ({ ...m, timestamp: new Date(m.timestamp) })) as Message[]);
+          setMessages(newMessages);
         }
+        
+        prevMessagesCount.current = newMessages.length || 1; // 1 to account for welcome message if empty
       } catch (e) {
         console.error("Error fetching messages", e);
       }
@@ -130,6 +153,9 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     e.preventDefault();
     if (!customerName.trim() || !customerPhone.trim()) return;
     
+    // Play a sound to initialize AudioContext on user interaction
+    playSound(SEND_SOUND);
+    
     localStorage.setItem(`customer_info_${profile.id}`, JSON.stringify({
       name: customerName,
       phone: customerPhone
@@ -142,6 +168,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
     const text = inputValue;
     setInputValue('');
+    playSound(SEND_SOUND); // صوت الإرسال
 
     try {
       await sql`
@@ -156,12 +183,15 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         VALUES (${chatSessionId.current}, 'customer', ${text})
       `;
       
-      setMessages(prev => [...prev, {
+      const newMsg: Message = {
         id: Date.now().toString(),
         sender: 'customer',
         text: text,
         timestamp: new Date()
-      }]);
+      };
+      
+      setMessages(prev => [...prev, newMsg]);
+      prevMessagesCount.current = (prevMessagesCount.current || 0) + 1;
     } catch (e) {
       console.error("Error sending message", e);
     }
@@ -278,10 +308,13 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
             <Send size={24} className="transform -rotate-45 -mr-1" />
           </button>
         </div>
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-4">
           <button onClick={() => setIsPolicyOpen(true)} className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2 hover:text-[#00D1FF] transition-colors group">
             <Info size={14} className="group-hover:rotate-12 transition-transform" /> سياسات ومعلومات المتجر
           </button>
+          <div className="flex items-center gap-1 text-[10px] text-gray-300 font-bold uppercase tracking-widest">
+            <Volume2 size={12} /> التنبيهات نشطة
+          </div>
         </div>
       </footer>
 

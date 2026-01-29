@@ -31,7 +31,8 @@ import {
   Link as LinkIcon,
   Info,
   Sparkles,
-  Phone as PhoneIcon
+  Phone as PhoneIcon,
+  Volume2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -59,6 +60,10 @@ const STATS_DATA = [
   { name: 'الجمعة', views: 349, chats: 430 },
 ];
 
+// روابط الأصوات
+const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
+const RECEIVE_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3';
+
 const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(DashboardTab.OVERVIEW);
   const [isSaving, setIsSaving] = useState(false);
@@ -73,11 +78,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesCount = useRef<number | null>(null);
   const [localProfile, setLocalProfile] = useState<BusinessProfile>(user.businessProfile);
 
   useEffect(() => {
     setLocalProfile(user.businessProfile);
   }, [user.id]);
+
+  const playSound = (url: string) => {
+    const audio = new Audio(url);
+    audio.play().catch(e => console.debug("Audio play blocked by browser"));
+  };
 
   // Polling for Chat Sessions
   useEffect(() => {
@@ -112,10 +123,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             WHERE session_id = ${selectedSession} 
             ORDER BY timestamp ASC
           `;
-          setChatMessages(msgs.map(m => ({
+          
+          const newMessages = msgs.map(m => ({
             ...m,
             timestamp: new Date(m.timestamp)
-          })) as Message[]);
+          })) as Message[];
+
+          // منطق التنبيه الصوتي عند استقبال رسالة جديدة من العميل
+          if (prevMessagesCount.current !== null && newMessages.length > prevMessagesCount.current) {
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg.sender === 'customer') {
+              playSound(RECEIVE_SOUND);
+            }
+          }
+          
+          prevMessagesCount.current = newMessages.length;
+          setChatMessages(newMessages);
         } catch (e) {
           console.error("Error fetching messages", e);
         }
@@ -123,7 +146,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
 
       fetchMessages();
       const interval = setInterval(fetchMessages, 3000);
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        prevMessagesCount.current = null; // Reset when session changes
+      };
     }
   }, [selectedSession]);
 
@@ -232,12 +258,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const handleSelectSession = (sessionId: string) => {
     setSelectedSession(sessionId);
     setIsMobileChatOpen(true);
+    prevMessagesCount.current = null; // Reset to avoid double sound on open
   };
 
   const handleReply = async () => {
     if (!replyText.trim() || !selectedSession) return;
     const text = replyText;
     setReplyText('');
+    playSound(SEND_SOUND); // صوت الإرسال
+    
     try {
       await sql`
         UPDATE chat_sessions SET 
@@ -251,12 +280,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         VALUES (${selectedSession}, 'owner', ${text})
       `;
       
-      setChatMessages(prev => [...prev, {
+      const newMsg: Message = {
         id: Date.now().toString(),
         sender: 'owner',
         text: text,
         timestamp: new Date()
-      }]);
+      };
+      
+      setChatMessages(prev => [...prev, newMsg]);
+      prevMessagesCount.current = (prevMessagesCount.current || 0) + 1;
     } catch (e) {
       console.error("Error sending reply", e);
     }
@@ -302,8 +334,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         return (
           <div className="flex h-[calc(100vh-180px)] md:h-[calc(100vh-200px)] bg-white rounded-3xl shadow-sm border overflow-hidden animate-in slide-in-from-bottom-4">
             <div className={`w-full md:w-80 border-l overflow-y-auto bg-gray-50/30 ${isMobileChatOpen ? 'hidden md:block' : 'block'}`}>
-              <div className="p-5 border-b bg-white sticky top-0 z-10">
+              <div className="p-5 border-b bg-white sticky top-0 z-10 flex items-center justify-between">
                 <h3 className="font-bold text-[#0D2B4D]">صندوق الوارد</h3>
+                <Volume2 size={16} className="text-gray-300" />
               </div>
               {activeSessions.length === 0 ? (
                 <div className="p-10 text-center text-gray-400 text-sm">لا توجد رسائل</div>
