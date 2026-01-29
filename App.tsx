@@ -70,6 +70,8 @@ const App: React.FC = () => {
           slug: p.slug || p.id,
           name: p.name,
           ownerName: p.owner_name,
+          description: p.description,
+          metaDescription: p.meta_description,
           phone: p.phone,
           countryCode: p.country_code,
           logo: p.logo,

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, DashboardTab, Product, BusinessProfile, Message } from '../types';
 import { sql } from '../neon';
+import { GoogleGenAI } from "@google/genai";
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -28,7 +29,8 @@ import {
   X,
   Image as ImageIcon,
   Link as LinkIcon,
-  Info // Added missing import for Info icon
+  Info,
+  Sparkles // أيقونة الذكاء الاصطناعي
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -57,6 +59,7 @@ const STATS_DATA = [
 const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(DashboardTab.OVERVIEW);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [activeSessions, setActiveSessions] = useState<ChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -65,11 +68,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
   
-  // New Product State for Modal
   const [newProduct, setNewProduct] = useState({ name: '', price: '', image: '' });
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
   const [localProfile, setLocalProfile] = useState<BusinessProfile>(user.businessProfile);
 
   useEffect(() => {
@@ -99,7 +99,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     }
   }, [activeTab, localProfile.id]);
 
-  // Polling for Messages in Selected Session
   useEffect(() => {
     if (selectedSession) {
       const fetchMessages = async () => {
@@ -129,15 +128,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  const generateMetaDescription = async (name: string, bio: string) => {
+    try {
+      setIsGeneratingMeta(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `أنت خبير سيو (SEO) محترف. قم بكتابة وصف ميتا (Meta Description) جذاب واحترافي باللغة العربية لمتجر يدعى "${name}". النبذة التعريفية للمتجر هي: "${bio}". 
+      الشروط:
+      1. يجب أن يكون الطول بين 120 إلى 150 حرفاً.
+      2. يجب أن يتضمن دعوة لاتخاذ إجراء (Call to action) مثل "تواصل معنا" أو "اكتشف منتجاتنا".
+      3. لا تضف أي نص توضيحي، فقط اكتب الوصف مباشرة.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+      });
+
+      return response.text?.trim() || "";
+    } catch (error) {
+      console.error("AI Meta generation failed", error);
+      return `${name} - تواصل معنا مباشرة عبر صفحة الدردشة الخاصة بنا واكتشف أحدث منتجاتنا وخدماتنا.`;
+    } finally {
+      setIsGeneratingMeta(false);
+    }
+  };
+
   const saveAllChanges = async () => {
     setIsSaving(true);
     try {
-      // Validate Slug
       const cleanSlug = localProfile.slug.toLowerCase().trim().replace(/[^\w-]/g, '');
       if (!cleanSlug) {
         alert("الرابط المخصص لا يمكن أن يكون فارغاً.");
         setIsSaving(false);
         return;
+      }
+
+      // إنشاء وصف الميتا تلقائياً إذا كان هناك تغيير في الاسم أو الوصف أو إذا كان فارغاً
+      let finalMeta = localProfile.metaDescription;
+      if (!finalMeta || localProfile.name !== user.businessProfile.name || localProfile.description !== user.businessProfile.description) {
+        finalMeta = await generateMetaDescription(localProfile.name, localProfile.description || '');
       }
 
       await sql`
@@ -146,6 +174,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           slug = ${cleanSlug},
           owner_name = ${localProfile.ownerName},
           description = ${localProfile.description || ''},
+          meta_description = ${finalMeta},
           phone = ${localProfile.phone},
           logo = ${localProfile.logo},
           social_links = ${JSON.stringify(localProfile.socialLinks)},
@@ -156,7 +185,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         WHERE id = ${localProfile.id}
       `;
       
-      const updatedProfile = { ...localProfile, slug: cleanSlug };
+      const updatedProfile = { ...localProfile, slug: cleanSlug, metaDescription: finalMeta };
       const updatedUser = { ...user, businessProfile: updatedProfile };
       setLocalProfile(updatedProfile);
       setUser(updatedUser);
@@ -389,7 +418,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                 {localProfile.products.map(product => (
                   <div key={product.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 p-4 space-y-4 group">
                     <div className="aspect-square relative rounded-2xl overflow-hidden bg-gray-50 border border-gray-50">
-                      <img src={product.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={product.name} />
+                      <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={product.name} />
                       <button 
                         onClick={() => setLocalProfile({...localProfile, products: localProfile.products.filter(p => p.id !== product.id)})} 
                         className="absolute top-2 left-2 p-2.5 bg-white/90 backdrop-blur text-red-500 rounded-xl shadow-sm hover:bg-red-50 transition-colors"
@@ -442,7 +471,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       case DashboardTab.CUSTOMIZE:
         return (
           <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-4 pb-32">
-            {/* رابط المتجر المخصص */}
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-cyan-100">
                <h3 className="text-xl font-black mb-6 text-[#0D2B4D] flex items-center gap-3"><LinkIcon className="text-[#00D1FF]" /> رابط المتجر المخصص</h3>
                <div className="space-y-4">
@@ -489,6 +517,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <label className="text-xs font-bold text-gray-400">النبذة التعريفية (Bio)</label>
                   <textarea className="w-full px-5 py-4 rounded-2xl border bg-gray-50 outline-none h-32 resize-none" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />
                 </div>
+                
+                {localProfile.metaDescription && (
+                  <div className="p-5 bg-gradient-to-r from-[#0D2B4D] to-blue-900 rounded-[24px] text-white shadow-lg overflow-hidden relative">
+                    <Sparkles className="absolute -top-2 -right-2 opacity-20 rotate-12" size={64} />
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-300">تحسين محركات البحث (SEO)</span>
+                        {isGeneratingMeta && <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>}
+                      </div>
+                      <p className="text-xs font-medium leading-relaxed italic opacity-90">"{localProfile.metaDescription}"</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-6 border-t">
                   <h4 className="font-bold mb-4">روابط التواصل الاجتماعي</h4>
                   <div className="grid md:grid-cols-2 gap-4">
@@ -513,9 +555,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
               </div>
             </div>
             <div className="fixed bottom-24 lg:bottom-12 left-1/2 -translate-x-1/2 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
+              <button onClick={saveAllChanges} disabled={isSaving || isGeneratingMeta} className="bg-[#0D2B4D] text-white px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 hover:scale-105 active:scale-95 transition-all">
                 {isSaving ? <Save className="animate-spin" size={20} /> : <Save size={20} />}
-                حفظ الهوية والتعديلات
+                {isGeneratingMeta ? 'جاري تحسين الظهور...' : 'حفظ الهوية والتعديلات'}
               </button>
             </div>
           </div>

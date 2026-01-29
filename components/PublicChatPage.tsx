@@ -15,7 +15,8 @@ import {
   Twitter,
   Facebook,
   Globe,
-  CheckCheck
+  CheckCheck,
+  MessageCircle
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -29,6 +30,41 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [isPolicyOpen, setIsPolicyOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
+
+  // تحديث الـ SEO عند تحميل الصفحة
+  useEffect(() => {
+    document.title = `${profile.name} - بازشات`;
+    
+    // محاولة تحديث وسم الوصف أو إنشاؤه
+    let metaDesc = document.querySelector('meta[name="description"]');
+    const content = profile.metaDescription || profile.description || `تواصل مع ${profile.name} مباشرة عبر بازشات.`;
+    
+    if (metaDesc) {
+      metaDesc.setAttribute('content', content);
+    } else {
+      metaDesc = document.createElement('meta');
+      metaDesc.setAttribute('name', 'description');
+      metaDesc.setAttribute('content', content);
+      document.head.appendChild(metaDesc);
+    }
+
+    // تحديث Open Graph (للتواصل الاجتماعي)
+    const updateOG = (property: string, content: string) => {
+      let el = document.querySelector(`meta[property="${property}"]`);
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('property', property);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+
+    updateOG('og:title', profile.name);
+    updateOG('og:description', content);
+    updateOG('og:image', profile.logo);
+    updateOG('og:type', 'website');
+
+  }, [profile]);
 
   useEffect(() => {
     localStorage.setItem(`chat_session_${profile.id}`, chatSessionId.current);
@@ -223,6 +259,35 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة السياسات */}
+      {isPolicyOpen && (
+        <div className="absolute inset-0 z-50">
+          <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-sm" onClick={() => setIsPolicyOpen(false)}></div>
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[50px] p-8 max-h-[70vh] overflow-y-auto animate-in slide-in-from-bottom-full">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-black text-[#0D2B4D]">معلومات المتجر</h3>
+              <button onClick={() => setIsPolicyOpen(false)} className="p-2 text-gray-400"><X size={24} /></button>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <h4 className="font-bold text-[#0D2B4D] mb-2">سياسة الاسترجاع</h4>
+                <p className="text-sm text-gray-600 leading-relaxed">{profile.returnPolicy}</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#0D2B4D] mb-2">سياسة الشحن</h4>
+                <p className="text-sm text-gray-600 leading-relaxed">{profile.deliveryPolicy}</p>
+              </div>
+              <div className="pt-6 border-t flex justify-center gap-6">
+                {profile.socialLinks.instagram && <a href={profile.socialLinks.instagram} className="text-pink-500 hover:scale-110 transition-transform"><Instagram size={28} /></a>}
+                {profile.socialLinks.twitter && <a href={profile.socialLinks.twitter} className="text-blue-400 hover:scale-110 transition-transform"><Twitter size={28} /></a>}
+                {profile.socialLinks.facebook && <a href={profile.socialLinks.facebook} className="text-blue-700 hover:scale-110 transition-transform"><Facebook size={28} /></a>}
+                {profile.socialLinks.whatsapp && <a href={`https://wa.me/${profile.socialLinks.whatsapp}`} className="text-green-500 hover:scale-110 transition-transform"><MessageCircle size={28} /></a>}
+              </div>
             </div>
           </div>
         </div>

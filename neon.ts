@@ -22,6 +22,7 @@ export const initTables = async () => {
         name TEXT NOT NULL,
         owner_name TEXT,
         description TEXT,
+        meta_description TEXT,
         phone TEXT,
         country_code TEXT,
         logo TEXT,
@@ -33,12 +34,14 @@ export const initTables = async () => {
       )
     `;
 
-    // Try to add slug column if it doesn't exist (for existing databases)
+    // Try to add missing columns for backward compatibility
     try {
       await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`;
-    } catch (e) {
-      console.log('Slug column might already exist');
-    }
+    } catch (e) {}
+    
+    try {
+      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`;
+    } catch (e) {}
     
     // New tables for messaging system
     await sql`

@@ -36,6 +36,7 @@ export interface BusinessProfile {
   name: string;
   ownerName: string;
   description?: string;
+  metaDescription?: string; // وصف الميتا المولد بالذكاء الاصطناعي
   phone: string;
   countryCode: string;
   logo: string;
