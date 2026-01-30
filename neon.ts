@@ -38,11 +38,7 @@ export const initTables = async () => {
       )
     `;
 
-    // Migration updates
-    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`; } catch (e) {}
-    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`; } catch (e) {}
-    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS faqs JSONB DEFAULT '[]'`; } catch (e) {}
-    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS location_url TEXT`; } catch (e) {}
+    // Migration updates to ensure columns exist
     try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT FALSE`; } catch (e) {}
     try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_business_info TEXT`; } catch (e) {}
     

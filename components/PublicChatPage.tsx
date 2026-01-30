@@ -6,26 +6,16 @@ import {
   Send, 
   ShoppingBag, 
   PhoneCall, 
-  Mic, 
-  MicOff, 
-  PhoneOff,
-  Volume2,
-  ChevronRight,
-  Bot,
-  X,
-  MessageCircle,
-  Package,
-  CheckCircle2,
-  User as UserIcon,
-  ShieldCheck,
-  Instagram,
-  Twitter,
-  Facebook,
-  MapPin,
-  Phone,
-  Camera,
-  Loader2,
-  Sparkles
+  Bot, 
+  X, 
+  MessageCircle, 
+  Package, 
+  ShieldCheck, 
+  MapPin, 
+  Phone, 
+  Camera, 
+  Loader2, 
+  Sparkles 
 } from 'lucide-react';
 
 interface PublicChatPageProps {
@@ -34,29 +24,17 @@ interface PublicChatPageProps {
 
 const IMGBB_API_KEY = 'a16fdd9aead1214d64e435c9b83a0c2e';
 const ZAI_API_KEY = '069e2918fe414ef8bba9f3821a3fea9a.xUiYL7a9GDzppL4Z';
-const RING_SOUND = 'https://assets.mixkit.co/active_storage/sfx/1344/1344-preview.mp3';
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const HANGUP_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2355/2355-preview.mp3';
 
 const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'incoming' | 'connected' | 'ended'>('idle');
-  const [isMuted, setIsMuted] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const [currentCallId, setCurrentCallId] = useState<string | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
-  const [showProfileInfo, setShowProfileInfo] = useState(false);
   const [isBotThinking, setIsBotThinking] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<'none' | 'name' | 'phone' | 'done'>('none');
   const [isUploading, setIsUploading] = useState(false);
   const [customerData, setCustomerData] = useState({ name: '', phone: '' });
 
-  const pc = useRef<RTCPeerConnection | null>(null);
-  const localStream = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  const ringAudio = useRef<HTMLAudioElement | null>(null);
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useRef<string>(localStorage.getItem(`chat_session_${profile.id}`) || `session_${Math.random().toString(36).substr(2, 9)}`);
 
@@ -76,12 +54,10 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           setCustomerData({ name: s.customer_name || '', phone: s.customer_phone || '' });
           if (!s.customer_name || s.customer_name === 'عميل بازشات') {
             setOnboardingStep('name');
-            const existing = await sql`SELECT id FROM chat_messages WHERE session_id = ${chatSessionId.current} AND text LIKE '%ما هو اسمك الكريم؟%'`;
-            if (existing.length === 0) await triggerOnboardingBot('name');
+            await triggerOnboardingBot('name');
           } else if (!s.customer_phone) {
             setOnboardingStep('phone');
-            const existing = await sql`SELECT id FROM chat_messages WHERE session_id = ${chatSessionId.current} AND text LIKE '%زودنا برقم هاتفك%'`;
-            if (existing.length === 0) await triggerOnboardingBot('phone');
+            await triggerOnboardingBot('phone');
           } else {
             setOnboardingStep('done');
           }
@@ -91,31 +67,23 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     initSession();
   }, [profile.id]);
 
-  const uploadToImgBB = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('image', file);
-    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
-    const json = await response.json();
-    if (json.success) return json.data.url;
-    throw new Error('Upload failed');
-  };
-
   const callZAI = async (userMessage: string, history: Message[]) => {
     try {
       const messagesPayload = [
         { 
           role: "system", 
-          content: `You are an AI assistant for a business named "${profile.name}". 
-          Owned by: ${profile.ownerName}.
-          Business Training Info: ${profile.aiBusinessInfo || profile.description || 'No detailed info provided'}.
-          Customer Details: Name: ${customerData.name}, Phone: ${customerData.phone}.
-          Instructions: 
-          1. Answer in the same language as the customer (predominantly Arabic). 
-          2. Be professional, friendly, and expert in the business details.
-          3. If the customer wants to order something, ask for details and confirm.
-          4. If you don't know an answer based on the training info, ask them to wait for the owner's response.`
+          content: `You are an AI Sales Assistant for "${profile.name}".
+          Business Information: ${profile.aiBusinessInfo || profile.description}.
+          Customer Name: ${customerData.name}.
+          Customer Phone: ${customerData.phone}.
+          Context: You help customers discover products and place orders. 
+          Instructions:
+          1. Answer accurately based ONLY on the business info provided.
+          2. If a customer wants to order, ask for items and quantity clearly.
+          3. Be friendly and professional. Respond in Arabic.
+          4. If info is missing, say you'll notify the manager.`
         },
-        ...history.slice(-8).map(m => ({
+        ...history.slice(-10).map(m => ({
           role: m.sender === 'customer' ? 'user' : 'assistant',
           content: m.text
         })),
@@ -124,49 +92,24 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
       const response = await fetch("https://api.z.ai/api/paas/v4/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${ZAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "glm-4.7",
-          messages: messagesPayload,
-          temperature: 0.7
-        })
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ZAI_API_KEY}` },
+        body: JSON.stringify({ model: "glm-4.7", messages: messagesPayload, temperature: 0.7 })
       });
 
       const data = await response.json();
-      if (data.choices && data.choices.length > 0) {
-        return data.choices[0].message.content;
-      }
-      return "عذراً، لم أستطع فهم ذلك بشكل صحيح. هل يمكنك التوضيح؟";
+      return data.choices?.[0]?.message?.content || "أعتذر، حدث خطأ تقني في معالجة طلبك.";
     } catch (e) {
       console.error("ZAI Error", e);
-      return "عذراً، أواجه مشكلة تقنية في الرد حالياً. سيقوم صاحب المتجر بالرد عليك قريباً.";
+      return "عذراً، أواجه مشكلة في الرد حالياً. سيقوم صاحب المتجر بالرد عليك قريباً.";
     }
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (onboardingStep !== 'done') { alert("يرجى إكمال بياناتك أولاً"); return; }
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      const imageUrl = await uploadToImgBB(file);
-      await handleSend(`IMAGE:${imageUrl}`);
-    } catch (error) { alert('فشل رفع الصورة'); }
-    finally { setIsUploading(false); }
   };
 
   const triggerOnboardingBot = async (step: 'name' | 'phone') => {
     setIsBotThinking(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 800));
     setIsBotThinking(false);
     let text = step === 'name' ? "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟" : "تشرفنا بك! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك بشكل أفضل.";
-    try {
-      await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${text})`;
-      setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() }]);
-    } catch (e) {}
+    setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() }]);
   };
 
   useEffect(() => {
@@ -209,245 +152,86 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         setIsBotThinking(true);
         setTimeout(async () => {
           setIsBotThinking(false);
-          const confirmText = profile.aiEnabled ? "شكراً لك! سأقوم بمساعدتك الآن والرد على استفساراتك فوراً." : "شكراً لك! تم حفظ بياناتك بنجاح. كيف يمكنني مساعدتك اليوم؟";
+          const confirmText = profile.aiEnabled ? "شكراً لك! سأقوم بمساعدتك الآن والرد على استفساراتك بناءً على معلومات العمل المتوفرة لدي." : "شكراً لك! تم حفظ بياناتك. كيف يمكنني مساعدتك؟";
           await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${confirmText})`;
           setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: confirmText, timestamp: new Date() }]);
         }, 1000);
         return;
       }
 
-      // إرسال رسالة العميل
-      const lastTextShow = txt.startsWith('IMAGE:') ? 'صورة' : txt;
-      await sql`UPDATE chat_sessions SET last_text = ${lastTextShow}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
+      await sql`UPDATE chat_sessions SET last_text = ${txt.substring(0, 30)}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
       await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
       
-      const userMsgObj: Message = { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() };
-      const updatedHistory = [...messages, userMsgObj];
+      const updatedHistory = [...messages, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() } as Message];
       setMessages(updatedHistory);
 
-      // الرد بالذكاء الاصطناعي إذا كان مفعلاً
       if (profile.aiEnabled && !txt.startsWith('IMAGE:')) {
         setIsBotThinking(true);
         const aiResponse = await callZAI(txt, updatedHistory);
         setIsBotThinking(false);
-        
         await sql`INSERT INTO chat_messages (session_id, sender, text, is_ai) VALUES (${chatSessionId.current}, 'owner', ${aiResponse}, TRUE)`;
-        await sql`UPDATE chat_sessions SET last_text = ${aiResponse.substring(0, 30)}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
-        
         setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'owner', text: aiResponse, timestamp: new Date(), isAi: true }]);
       }
-    } catch (e) {
-      console.error("Send error:", e);
-    }
+    } catch (e) {}
   };
 
-  const handleFAQClick = async (faq: FAQ) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (onboardingStep !== 'done') { alert("يرجى إكمال بياناتك أولاً"); return; }
-    await handleSend(faq.question);
-    if (!profile.aiEnabled) {
-      setIsBotThinking(true);
-      setTimeout(async () => {
-        setIsBotThinking(false);
-        try {
-          await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${faq.answer})`;
-          setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: faq.answer, timestamp: new Date() }]);
-        } catch (e) {}
-      }, 1500);
-    }
-  };
-
-  const handleStartCall = async () => {
-    if (callStatus !== 'idle') return;
-    const callId = `call_${Date.now()}`;
-    setCurrentCallId(callId);
-    setCallStatus('calling');
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
     try {
-      await sql`INSERT INTO voice_calls (session_id, call_id, status, caller_role, updated_at) VALUES (${chatSessionId.current}, ${callId}, 'calling', 'customer', NOW()) ON CONFLICT (session_id) DO UPDATE SET call_id = ${callId}, status = 'calling', caller_role = 'customer', updated_at = NOW()`;
-      pc.current = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-      pc.current.onicecandidate = async (event) => {
-        if (event.candidate) await sql`UPDATE voice_calls SET caller_candidates = caller_candidates || ${JSON.stringify([event.candidate])}::jsonb, updated_at = NOW() WHERE session_id = ${chatSessionId.current} AND call_id = ${callId}`;
-      };
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStream.current.getTracks().forEach(track => pc.current?.addTrack(track, localStream.current!));
-      const offer = await pc.current.createOffer();
-      await pc.current.setLocalDescription(offer);
-      await sql`UPDATE voice_calls SET offer = ${JSON.stringify(offer)} WHERE session_id = ${chatSessionId.current} AND call_id = ${callId}`;
-      if (!ringAudio.current) { ringAudio.current = new Audio(RING_SOUND); ringAudio.current.loop = true; }
-      ringAudio.current.play().catch(() => {});
-    } catch (e) { handleEndCall(); }
+      const formData = new FormData();
+      formData.append('image', file);
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
+      const json = await response.json();
+      if (json.success) await handleSend(`IMAGE:${json.data.url}`);
+    } catch (error) { alert('فشل رفع الصورة'); }
+    finally { setIsUploading(false); }
   };
-
-  const handleEndCall = async (notify = true) => {
-    const cId = currentCallId;
-    setCallStatus('idle');
-    setCurrentCallId(null);
-    playSound(HANGUP_SOUND);
-    if (localStream.current) localStream.current.getTracks().forEach(t => t.stop());
-    if (pc.current) pc.current.close();
-    if (ringAudio.current) ringAudio.current.pause();
-    if (notify && cId) try { await sql`UPDATE voice_calls SET status = 'ended', updated_at = NOW() WHERE session_id = ${chatSessionId.current} AND call_id = ${cId}`; } catch (e) {}
-  };
-
-  const formatDuration = (s: number) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col max-w-full md:max-w-2xl mx-auto shadow-2xl relative overflow-hidden font-tajawal text-right">
-      <audio ref={remoteAudioRef} autoPlay className="hidden" />
-
+      <header className="bg-white/80 backdrop-blur-md p-4 flex items-center justify-between border-b shadow-sm sticky top-0 z-40">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 bg-white shrink-0"><img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" /></div>
+          <div className="overflow-hidden"><h1 className="font-black text-base text-[#0D2B4D] truncate">{profile.name}</h1><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">نشط الآن</span></div></div>
+        </div>
+        <button onClick={() => setShowCatalog(true)} className="w-11 h-11 rounded-2xl bg-[#00D1FF] text-white flex items-center justify-center shadow-xl"><ShoppingBag size={20} /></button>
+      </header>
+      <main className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50/20">
+        {messages.map((m, idx) => (
+          <div key={m.id || idx} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
+            <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm relative ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
+              {m.isAi && <div className="flex items-center gap-1 mb-1 text-[#00D1FF] text-[8px] font-black uppercase tracking-wider"><Sparkles size={10} /> رد ذكي</div>}
+              {m.text.startsWith('IMAGE:') ? <img src={m.text.replace('IMAGE:', '')} className="rounded-2xl max-w-full max-h-[300px] object-cover" /> : <p className="leading-relaxed">{m.text}</p>}
+              <div className="text-[10px] mt-2 opacity-50 text-left font-black tracking-tighter uppercase">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+            </div>
+          </div>
+        ))}
+        {isBotThinking && <div className="flex justify-start"><div className="bg-white border p-4 rounded-3xl flex gap-1.5 shadow-sm"><div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-150"></div><div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-300"></div></div></div>}
+        <div ref={messagesEndRef} />
+      </main>
       {showCatalog && (
         <div className="fixed inset-0 z-[100] bg-[#0D2B4D]/60 backdrop-blur-md animate-in fade-in duration-300">
            <div className="absolute inset-x-0 bottom-0 h-[85vh] bg-white rounded-t-[50px] shadow-2xl overflow-y-auto p-8 animate-in slide-in-from-bottom duration-500">
-             <div className="flex items-center justify-between mb-8 sticky top-0 bg-white z-10 py-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#00D1FF]/10 rounded-2xl flex items-center justify-center text-[#00D1FF]"><Package size={24}/></div>
-                  <h2 className="text-2xl font-black text-[#0D2B4D]">كتالوج المنتجات</h2>
-                </div>
-                <button onClick={() => setShowCatalog(false)} className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500"><X size={24}/></button>
-             </div>
+             <div className="flex items-center justify-between mb-8 sticky top-0 bg-white z-10 py-2"><h2 className="text-2xl font-black text-[#0D2B4D]">كتالوج المنتجات</h2><button onClick={() => setShowCatalog(false)} className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500"><X size={24}/></button></div>
              <div className="grid grid-cols-2 gap-4">
                 {profile.products.map(p => (
                   <div key={p.id} className="bg-gray-50 rounded-[32px] overflow-hidden border p-3 group">
                      <div className="aspect-square rounded-[24px] overflow-hidden mb-3 bg-white"><img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /></div>
-                     <div className="px-2">
-                        <h4 className="font-black text-[#0D2B4D] text-sm truncate">{p.name}</h4>
-                        <div className="flex items-center justify-between mt-1">
-                          <p className="text-[#00D1FF] font-black text-sm">{p.price} {profile.currency}</p>
-                          <button onClick={() => { handleSend(`أنا مهتم بمنتج: ${p.name}`); setShowCatalog(false); }} className="w-8 h-8 bg-[#0D2B4D] text-white rounded-xl flex items-center justify-center hover:scale-110 transition-transform"><MessageCircle size={14}/></button>
-                        </div>
-                     </div>
+                     <div className="px-2"><h4 className="font-black text-[#0D2B4D] text-sm truncate">{p.name}</h4><p className="text-[#00D1FF] font-black text-sm">{p.price} {profile.currency}</p></div>
                   </div>
                 ))}
              </div>
            </div>
         </div>
       )}
-
-      {showProfileInfo && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-in fade-in duration-300">
-           <div className="absolute inset-0 bg-[#0D2B4D]/60 backdrop-blur-md" onClick={() => setShowProfileInfo(false)}></div>
-           <div className="relative bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl text-center animate-in zoom-in-95">
-              <button onClick={() => setShowProfileInfo(false)} className="absolute top-6 left-6 text-gray-400"><X size={24}/></button>
-              <div className="w-24 h-24 rounded-[32px] border-4 border-[#00D1FF]/20 mx-auto p-1 bg-white mb-6"><img src={profile.logo} className="w-full h-full object-cover rounded-[24px]" /></div>
-              <h3 className="text-2xl font-black text-[#0D2B4D] mb-1">{profile.name}</h3>
-              <p className="text-sm font-bold text-gray-400 mb-6">{profile.ownerName}</p>
-              <div className="space-y-4 mb-8 text-right">
-                {profile.phone && (
-                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                    <div className="w-10 h-10 bg-[#0D2B4D] text-white rounded-xl flex items-center justify-center"><Phone size={20}/></div>
-                    <div className="flex-1"><p className="text-[10px] text-gray-400 font-black">رقم الهاتف</p><a href={`tel:${profile.phone}`} className="font-black text-[#0D2B4D]">{profile.phone}</a></div>
-                  </div>
-                )}
-                {profile.locationUrl && (
-                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
-                    <div className="w-10 h-10 bg-green-500 text-white rounded-xl flex items-center justify-center"><MapPin size={20}/></div>
-                    <div className="flex-1"><p className="text-[10px] text-gray-400 font-black">الموقع</p><a href={profile.locationUrl} target="_blank" rel="noreferrer" className="font-black text-[#0D2B4D] truncate block w-40">خرائط جوجل</a></div>
-                  </div>
-                )}
-              </div>
-           </div>
-        </div>
-      )}
-
-      {callStatus !== 'idle' && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-2xl"></div>
-          <div className="relative w-full max-w-xs text-center text-white animate-in zoom-in-95">
-             <div className="mb-8 relative flex justify-center">
-                <div className="w-28 h-28 rounded-[40px] overflow-hidden border-4 border-[#00D1FF] p-1 bg-white relative z-10 shadow-2xl"><img src={profile.logo} className="w-full h-full object-cover rounded-[34px]" /></div>
-                {callStatus === 'connected' && <div className="absolute top-0 w-32 h-32 m-auto border-2 border-cyan-400 rounded-full animate-ping opacity-40"></div>}
-             </div>
-             <h3 className="text-2xl font-black mb-1">{profile.name}</h3>
-             <p className="text-[#00D1FF] font-black text-xs uppercase tracking-widest mb-12">
-               {callStatus === 'calling' && 'جاري طلب المكالمة...'}
-               {callStatus === 'incoming' && 'المتجر يتصل بك...'}
-               {callStatus === 'connected' && formatDuration(callDuration)}
-             </p>
-             <div className="flex items-center justify-center gap-6">
-                <button onClick={() => handleEndCall(true)} className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition-transform active:scale-95"><PhoneOff size={32}/></button>
-                {callStatus === 'incoming' && <button onClick={handleStartCall} className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-xl animate-bounce"><PhoneCall size={32}/></button>}
-             </div>
-          </div>
-        </div>
-      )}
-
-      <header className="bg-white/80 backdrop-blur-md p-4 flex items-center justify-between border-b shadow-sm sticky top-0 z-40">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowProfileInfo(true)} className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 shadow-lg bg-white shrink-0 shadow-cyan-100 hover:scale-105 transition-transform"><img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" /></button>
-          <div className="overflow-hidden">
-            <h1 className="font-black text-base text-[#0D2B4D] truncate">{profile.name}</h1>
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Online</span></div>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={handleStartCall} disabled={callStatus !== 'idle'} className="w-11 h-11 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center border border-green-100 active:scale-90 transition-transform"><PhoneCall size={20} /></button>
-          <button onClick={() => setShowCatalog(true)} className="w-11 h-11 rounded-2xl bg-[#00D1FF] text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform"><ShoppingBag size={20} /></button>
-        </div>
-      </header>
-
-      <main className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50/20">
-        {messages.length === 0 && !isBotThinking && (
-          <div className="text-center py-10 px-6 animate-in fade-in duration-1000">
-             <div className="w-24 h-24 bg-[#00D1FF]/10 rounded-[40px] flex items-center justify-center text-[#00D1FF] mx-auto mb-8 shadow-inner"><MessageCircle size={48}/></div>
-             <h3 className="text-2xl font-black text-[#0D2B4D] mb-3">أهلاً بك في بازشات {profile.name}</h3>
-             <p className="text-gray-400 text-sm font-bold leading-relaxed">{profile.description || 'يمكنك طرح استفساراتك أو تصفح منتجاتنا، يسعدنا خدمتك دائماً.'}</p>
-          </div>
-        )}
-        {messages.map((m, idx) => (
-          <div key={m.id || idx} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
-            <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm relative ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
-              {m.isAi && (
-                <div className="flex items-center gap-1 mb-1 text-[#00D1FF] text-[8px] font-black uppercase tracking-wider">
-                  <Sparkles size={10} /> رد ذكي
-                </div>
-              )}
-              {m.text.startsWith('IMAGE:') ? (
-                <img src={m.text.replace('IMAGE:', '')} className="rounded-2xl max-w-full max-h-[300px] object-cover cursor-pointer hover:opacity-90" onClick={() => window.open(m.text.replace('IMAGE:', ''), '_blank')} />
-              ) : (
-                <p className="leading-relaxed">{m.text}</p>
-              )}
-              <div className="text-[10px] mt-2 opacity-50 text-left font-black tracking-tighter uppercase">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
-            </div>
-          </div>
-        ))}
-        {isBotThinking && (
-          <div className="flex justify-start">
-            <div className="bg-white border p-4 rounded-3xl rounded-tl-none flex gap-1.5 shadow-sm">
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-150"></div>
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-300"></div>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </main>
-
-      {onboardingStep === 'done' && profile.faqs && profile.faqs.length > 0 && !profile.aiEnabled && (
-        <div className="bg-white/80 backdrop-blur-sm px-4 py-4 flex gap-3 overflow-x-auto no-scrollbar border-t border-gray-50 shrink-0">
-          <div className="w-10 h-10 bg-[#0D2B4D] text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10"><Bot size={22}/></div>
-          {profile.faqs.map((faq) => (
-            <button key={faq.id} onClick={() => handleFAQClick(faq)} className="bg-white border-2 border-gray-50 px-5 py-2.5 rounded-[20px] text-xs font-black text-gray-700 whitespace-nowrap shadow-sm hover:border-[#00D1FF] transition-all active:scale-95">{faq.question}</button>
-          ))}
-        </div>
-      )}
-
       <footer className="p-4 bg-white border-t safe-area-bottom shadow-2xl">
         <div className="flex items-center gap-3">
-          <label className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-400 rounded-2xl cursor-pointer hover:bg-gray-200 transition-colors shrink-0">
-            {isUploading ? <Loader2 size={24} className="animate-spin text-[#00D1FF]" /> : <Camera size={24} />}
-            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={isUploading} />
-          </label>
-          <div className="flex-1 relative">
-            <input 
-              type={onboardingStep === 'phone' ? 'tel' : 'text'}
-              value={inputValue} 
-              onChange={e=>setInputValue(e.target.value)} 
-              onKeyPress={e=>e.key==='Enter'&&handleSend()} 
-              placeholder={onboardingStep === 'name' ? 'أدخل اسمك هنا...' : onboardingStep === 'phone' ? 'أدخل رقم هاتفك هنا...' : "اكتب استفسارك هنا..."}
-              className="w-full px-6 py-4 rounded-[26px] bg-gray-50 border-2 border-transparent outline-none text-right font-black text-sm focus:border-[#00D1FF]/30 transition-all shadow-inner" 
-            />
-            {onboardingStep !== 'done' && <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#00D1FF] flex items-center gap-1.5 font-black text-[10px] uppercase"><span className="w-1.5 h-1.5 bg-[#00D1FF] rounded-full animate-ping"></span>مطلوب</div>}
-          </div>
-          <button onClick={() => handleSend()} disabled={!inputValue.trim() || isBotThinking || isUploading} className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl active:scale-90 transition-all disabled:opacity-50"><Send size={26} className="-rotate-45" /></button>
+          <label className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-400 rounded-2xl cursor-pointer shrink-0">{isUploading ? <Loader2 size={24} className="animate-spin text-[#00D1FF]" /> : <Camera size={24} />}<input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={isUploading} /></label>
+          <input type="text" value={inputValue} onChange={e=>setInputValue(e.target.value)} onKeyPress={e=>e.key==='Enter'&&handleSend()} placeholder={onboardingStep === 'name' ? 'أدخل اسمك هنا...' : onboardingStep === 'phone' ? 'أدخل رقم هاتفك هنا...' : "اكتب استفسارك هنا..."} className="w-full px-6 py-4 rounded-[26px] bg-gray-50 border-2 border-transparent outline-none text-right font-black text-sm focus:border-[#00D1FF]/30 transition-all shadow-inner" />
+          <button onClick={() => handleSend()} disabled={!inputValue.trim() || isBotThinking || isUploading} className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl disabled:opacity-50"><Send size={26} className="-rotate-45" /></button>
         </div>
         <div className="flex justify-center mt-3"><div className="flex items-center gap-1.5 text-gray-400 text-[9px] font-bold"><ShieldCheck size={12} className="text-green-500" /><span>مدعوم بواسطة بازشات - محادثة آمنة ومشفرة</span></div></div>
       </footer>
