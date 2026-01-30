@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BusinessProfile, Message, FAQ } from '../types';
 import { sql } from '../neon';
-import { GoogleGenAI } from "@google/genai";
 import { 
   Send, 
   ShoppingBag, 
@@ -15,6 +14,8 @@ import {
   Loader2, 
   Sparkles 
 } from 'lucide-react';
+// Correct import for Gemini API
+import { GoogleGenAI } from "@google/genai";
 
 interface PublicChatPageProps {
   profile: BusinessProfile;
@@ -66,61 +67,49 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     initSession();
   }, [profile.id]);
 
-  const callGeminiAI = async (userMessage: string, history: Message[]) => {
+  // Updated to use Google GenAI SDK as per coding guidelines
+  const callAI = async (userMessage: string, history: Message[]) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-      //初始化 Gemini API
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
       const productsList = profile.products.map(p => `- ${p.name}: ${p.price} ${profile.currency}`).join('\n');
       
       const systemInstruction = `
-        أنت المساعد الذكي والموظف الافتراضي الرسمي لمتجر "${profile.name}".
+        أنت المساعد الذكي لمصنع/متجر "${profile.name}".
         صاحب المتجر هو: ${profile.ownerName}.
         
-        معلومات المتجر الأساسية:
-        ${profile.aiBusinessInfo || profile.description || 'متجر يقدم أفضل الخدمات والمنتجات.'}
+        معلومات المتجر التي تم حفظها:
+        ${profile.aiBusinessInfo || profile.description || 'متجر بازشات المتميز'}
         
-        قائمة المنتجات والأسعار الحالية:
-        ${productsList || 'يرجى مراجعة الكتالوج للحصول على أحدث الأسعار.'}
+        كتالوج المنتجات:
+        ${productsList || 'تواصل معنا لمعرفة المتاح'}
         
-        بيانات العميل الذي تتحدث معه الآن:
-        - الاسم: ${customerData.name}
-        - الهاتف: ${customerData.phone}
+        بيانات العميل:
+        الاسم: ${customerData.name}
+        الهاتف: ${customerData.phone}
         
-        تعليمات صارمة للرد:
-        1. اللغة: العربية بلهجة مهذبة وودودة.
-        2. المصدر: استخدم المعلومات المذكورة أعلاه فقط. لا تخمن معلومات عن الأسعار أو التوصيل إذا لم تكن مذكورة.
-        3. الهدف: ساعد العميل في اختيار المنتجات وحثه على الشراء.
-        4. الطلبات: إذا طلب العميل منتجاً، أخبره أنك سجلت طلبه وأن صاحب المتجر سيتواصل معه على رقمه (${customerData.phone}).
-        5. الخصوصية: لا تذكر أي تفاصيل تقنية عن كيفية عملك كذكاء اصطناعي.
+        التعليمات:
+        1. رد دائماً باللغة العربية.
+        2. استخدم المعلومات المحفوظة أعلاه للإجابة على العميل.
+        3. إذا أراد العميل طلب شيء، أكد له أن بياناته مسجلة وسيتم التواصل معه.
+        4. كن لطيفاً ومختصراً.
       `;
 
-      // تحويل تاريخ المحادثة للصيغة التي يفهمها Gemini
-      const contents = history.slice(-6).map(m => ({
-        role: m.sender === 'customer' ? 'user' : 'model',
-        parts: [{ text: m.text }]
-      }));
-
-      // إضافة الرسالة الحالية
-      contents.push({
-        role: 'user',
-        parts: [{ text: userMessage }]
-      });
-
+      // Using gemini-3-flash-preview for general text tasks
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: contents,
+        contents: history.slice(-6).map(m => ({
+          role: m.sender === 'customer' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        })),
         config: {
           systemInstruction: systemInstruction,
-          temperature: 0.8,
-          topP: 0.95,
         }
       });
 
-      return response.text || "أعتذر، لم أستطع صياغة رد مناسب حالياً. كيف يمكنني مساعدتك بطريقة أخرى؟";
+      return response.text || "أعتذر، حدث خطأ في معالجة الرد.";
     } catch (e) {
-      console.error("Gemini API Error:", e);
-      return "أهلاً بك! سيقوم صاحب المتجر بالرد عليك قريباً للإجابة على استفسارك بدقة.";
+      console.error("AI connection failed:", e);
+      return "عذراً، أواجه صعوبة في الاتصال بالذكاء الاصطناعي حالياً. سيقوم صاحب المتجر بالرد عليك قريباً.";
     }
   };
 
@@ -128,7 +117,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     setIsBotThinking(true);
     await new Promise(resolve => setTimeout(resolve, 800));
     setIsBotThinking(false);
-    let text = step === 'name' ? "أهلاً بك في متجرنا! ما هو اسمك الكريم لنتمكن من خدمتك؟" : `تشرفنا بك يا ${customerData.name}! فضلاً، ما هو رقم هاتفك لمتابعة طلباتك؟`;
+    let text = step === 'name' ? "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟" : `تشرفنا بك يا ${customerData.name}! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك بشكل أفضل.`;
     setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() }]);
   };
 
@@ -140,7 +129,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       } catch (e) {}
     };
     fetchMsgs();
-    const interval = setInterval(fetchMsgs, 4000);
+    const interval = setInterval(fetchMsgs, 5000);
     return () => clearInterval(interval);
   }, [profile.id]);
 
@@ -174,8 +163,8 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         setTimeout(async () => {
           setIsBotThinking(false);
           const confirmText = profile.aiEnabled 
-            ? `أهلاً بك يا ${customerData.name}، أنا المساعد الذكي لمتجر ${profile.name}. كيف يمكنني مساعدتك اليوم؟` 
-            : "شكراً لك! تم استلام بياناتك بنجاح. كيف يمكنني مساعدتك؟";
+            ? `شكراً لك يا ${customerData.name}! أنا المساعد الذكي لمتجر ${profile.name}. كيف يمكنني مساعدتك اليوم؟ يمكنك سؤالي عن أي شيء يخص منتجاتنا.` 
+            : "شكراً لك! تم استلام بياناتك بنجاح. سيقوم صاحب المتجر بالرد عليك قريباً.";
           await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${confirmText})`;
           setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: confirmText, timestamp: new Date() }]);
         }, 1000);
@@ -191,140 +180,124 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
       if (profile.aiEnabled && !txt.startsWith('IMAGE:')) {
         setIsBotThinking(true);
-        const aiResponse = await callGeminiAI(txt, updatedHistory);
+        const aiResponse = await callAI(txt, updatedHistory);
         setIsBotThinking(false);
         
         await sql`INSERT INTO chat_messages (session_id, sender, text, is_ai) VALUES (${chatSessionId.current}, 'owner', ${aiResponse}, TRUE)`;
-        await sql`UPDATE chat_sessions SET last_text = ${aiResponse.substring(0, 50)}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
-        
-        setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'owner', text: aiResponse, timestamp: new Date(), isAi: true }]);
+        setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: aiResponse, timestamp: new Date(), isAi: true }]);
       }
     } catch (e) {
-      console.error("Handle send error:", e);
+      console.error("Error sending message:", e);
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (onboardingStep !== 'done') { alert("يرجى إكمال بياناتك أولاً"); return; }
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
-      const json = await response.json();
-      if (json.success) await handleSend(`IMAGE:${json.data.url}`);
-    } catch (error) { alert('فشل رفع الصورة'); }
-    finally { setIsUploading(false); }
-  };
-
   return (
-    <div className="h-screen bg-gray-50 flex flex-col max-w-full md:max-w-2xl mx-auto shadow-2xl relative overflow-hidden font-tajawal text-right">
-      <header className="bg-white/80 backdrop-blur-md p-4 flex items-center justify-between border-b shadow-sm sticky top-0 z-40">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-tajawal text-right overflow-hidden">
+      {/* Header */}
+      <div className="bg-white p-4 border-b flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-[18px] overflow-hidden border-2 border-[#00D1FF] p-0.5 bg-white shrink-0">
-            <img src={profile.logo} className="w-full h-full object-cover rounded-[16px]" alt="Logo" />
-          </div>
-          <div className="overflow-hidden">
-            <h1 className="font-black text-base text-[#0D2B4D] truncate">{profile.name}</h1>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">متصل</span>
+          <img src={profile.logo} className="h-10 w-10 rounded-xl object-cover" alt="Logo" />
+          <div>
+            <h1 className="font-bold text-[#0D2B4D]">{profile.name}</h1>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[10px] text-gray-400 font-bold">متصل الآن</span>
             </div>
           </div>
         </div>
-        <button onClick={() => setShowCatalog(true)} className="w-11 h-11 rounded-2xl bg-[#00D1FF] text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"><ShoppingBag size={20} /></button>
-      </header>
+        <div className="flex items-center gap-2">
+           <button onClick={() => setShowCatalog(true)} className="p-2 bg-[#00D1FF]/10 text-[#00D1FF] rounded-xl"><Package size={20} /></button>
+        </div>
+      </div>
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50/20">
-        {messages.map((m, idx) => (
-          <div key={m.id || idx} className={`flex ${m.sender==='customer'?'justify-end':'justify-start'} animate-in slide-in-from-bottom-2`}>
-            <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm relative ${m.sender==='customer'?'bg-[#0D2B4D] text-white rounded-tr-none shadow-blue-500/10':'bg-white border border-gray-100 rounded-tl-none text-gray-800'}`}>
-              {m.isAi && <div className="flex items-center gap-1 mb-1 text-[#00D1FF] text-[8px] font-black uppercase tracking-wider"><Sparkles size={10} /> رد ذكي ✨</div>}
-              {m.text.startsWith('IMAGE:') ? (
-                <img src={m.text.replace('IMAGE:', '')} className="rounded-2xl max-w-full max-h-[300px] object-cover" alt="Sent image" />
-              ) : (
-                <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+      {/* Chat Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((m) => (
+          <div key={m.id} className={`flex ${m.sender === 'owner' ? 'justify-start' : 'justify-end'}`}>
+            <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm text-sm relative ${
+              m.sender === 'owner' 
+                ? 'bg-white border text-gray-800 rounded-tr-none' 
+                : 'bg-[#0D2B4D] text-white rounded-tl-none'
+            }`}>
+              {m.isAi && (
+                <div className="flex items-center gap-1 mb-1 text-[#00D1FF] text-[8px] font-black uppercase tracking-wider">
+                  <Sparkles size={10} /> رد ذكي
+                </div>
               )}
-              <div className="text-[10px] mt-2 opacity-50 text-left font-black tracking-tighter uppercase">{m.timestamp.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+              {m.text.startsWith('IMAGE:') ? (
+                <img src={m.text.replace('IMAGE:', '')} className="rounded-xl max-w-full" alt="Uploaded" />
+              ) : (
+                <p className="leading-relaxed font-medium">{m.text}</p>
+              )}
             </div>
           </div>
         ))}
         {isBotThinking && (
           <div className="flex justify-start">
-            <div className="bg-white border p-4 rounded-3xl flex gap-1.5 shadow-sm">
-              <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce delay-150"></div>
-              <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce delay-300"></div>
+            <div className="bg-white border p-4 rounded-2xl rounded-tr-none flex items-center gap-2">
+              <Loader2 className="animate-spin text-[#00D1FF]" size={16} />
+              <span className="text-xs text-gray-400 font-bold">جاري الرد...</span>
             </div>
           </div>
-        )}
+        ) }
         <div ref={messagesEndRef} />
-      </main>
+      </div>
 
-      {showCatalog && (
-        <div className="fixed inset-0 z-[100] bg-[#0D2B4D]/60 backdrop-blur-md animate-in fade-in duration-300">
-           <div className="absolute inset-x-0 bottom-0 h-[85vh] bg-white rounded-t-[50px] shadow-2xl overflow-y-auto p-8 animate-in slide-in-from-bottom duration-500">
-             <div className="flex items-center justify-between mb-8 sticky top-0 bg-white z-10 py-2">
-                <h2 className="text-2xl font-black text-[#0D2B4D]">كتالوج المنتجات</h2>
-                <button onClick={() => setShowCatalog(false)} className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500"><X size={24}/></button>
-             </div>
-             <div className="grid grid-cols-2 gap-4">
-                {profile.products.map(p => (
-                  <div key={p.id} className="bg-gray-50 rounded-[32px] overflow-hidden border p-3 group">
-                     <div className="aspect-square rounded-[24px] overflow-hidden mb-3 bg-white">
-                        <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />
-                     </div>
-                     <div className="px-2">
-                        <h4 className="font-black text-[#0D2B4D] text-sm truncate">{p.name}</h4>
-                        <div className="flex items-center justify-between mt-1">
-                          <p className="text-[#00D1FF] font-black text-sm">{p.price} {profile.currency}</p>
-                          <button 
-                            onClick={() => { handleSend(`أريد طلب منتج: ${p.name}`); setShowCatalog(false); }}
-                            className="w-8 h-8 bg-[#0D2B4D] text-white rounded-xl flex items-center justify-center hover:scale-110 transition-transform"
-                          >
-                            <MessageCircle size={14}/>
-                          </button>
-                        </div>
-                     </div>
-                  </div>
-                ))}
-                {profile.products.length === 0 && <div className="col-span-2 text-center py-20 text-gray-400 font-bold">لا توجد منتجات معروضة حالياً</div>}
-             </div>
-           </div>
-        </div>
-      )}
-
-      <footer className="p-4 bg-white border-t safe-area-bottom shadow-2xl">
-        <div className="flex items-center gap-3">
-          <label className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-400 rounded-2xl cursor-pointer shrink-0 hover:bg-gray-200 transition-colors">
-            {isUploading ? <Loader2 size={24} className="animate-spin text-[#00D1FF]" /> : <Camera size={24} />}
-            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={isUploading} />
-          </label>
+      {/* Input Area */}
+      <div className="p-4 bg-white border-t sticky bottom-0">
+        <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-2xl border">
+          <button 
+            onClick={() => handleSend()}
+            disabled={!inputValue.trim()}
+            className="w-12 h-12 bg-[#0D2B4D] text-white rounded-xl flex items-center justify-center hover:scale-105 transition-transform disabled:opacity-50"
+          >
+            <Send size={20} />
+          </button>
           <input 
             type="text" 
-            value={inputValue} 
-            onChange={e=>setInputValue(e.target.value)} 
-            onKeyPress={e=>e.key==='Enter'&&handleSend()} 
-            placeholder={onboardingStep === 'name' ? 'أدخل اسمك هنا...' : onboardingStep === 'phone' ? 'أدخل رقم هاتفك هنا...' : "اكتب استفسارك هنا..."} 
-            className="w-full px-6 py-4 rounded-[26px] bg-gray-50 border-2 border-transparent outline-none text-right font-black text-sm focus:border-[#00D1FF]/30 transition-all shadow-inner" 
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="اكتب رسالتك هنا..."
+            className="flex-1 bg-transparent border-none outline-none p-2 text-sm font-bold"
           />
-          <button 
-            onClick={() => handleSend()} 
-            disabled={!inputValue.trim() || isBotThinking || isUploading} 
-            className="w-14 h-14 bg-[#0D2B4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl disabled:opacity-50 active:scale-90 transition-all"
-          >
-            <Send size={26} className="-rotate-45" />
-          </button>
         </div>
-        <div className="flex justify-center mt-3">
-          <div className="flex items-center gap-1.5 text-gray-400 text-[9px] font-bold">
-            <ShieldCheck size={12} className="text-green-500" />
-            <span>مدعوم بواسطة بازشات - محادثة ذكية وآمنة</span>
+      </div>
+
+      {/* Catalog Modal */}
+      {showCatalog && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-[#0D2B4D]/80 backdrop-blur-sm" onClick={() => setShowCatalog(false)} />
+          <div className="relative bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b flex items-center justify-between bg-gray-50">
+              <h3 className="font-bold text-lg">منتجاتنا</h3>
+              <button onClick={() => setShowCatalog(false)} className="p-2 bg-white rounded-xl shadow-sm"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4">
+              {profile.products.map((p) => (
+                <div key={p.id} className="bg-white border rounded-2xl overflow-hidden group shadow-sm">
+                  <div className="aspect-square overflow-hidden bg-gray-100">
+                    <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform" alt={p.name} />
+                  </div>
+                  <div className="p-3">
+                    <h4 className="text-xs font-bold text-[#0D2B4D] truncate">{p.name}</h4>
+                    <p className="text-[#00D1FF] font-black text-sm mt-1">{p.price} {profile.currency}</p>
+                    <button 
+                      onClick={() => {
+                        handleSend(`أرغب في الاستفسار عن المنتج: ${p.name}`);
+                        setShowCatalog(false);
+                      }}
+                      className="w-full mt-2 py-2 bg-gray-50 text-[10px] font-bold rounded-lg hover:bg-[#00D1FF] hover:text-white transition-colors"
+                    >
+                      استفسار
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </footer>
+      )}
     </div>
   );
 };
