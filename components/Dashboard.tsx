@@ -37,7 +37,10 @@ import {
   MapPin,
   Phone,
   Camera,
-  Loader2
+  Loader2,
+  Sparkles,
+  ToggleLeft as ToggleOff,
+  ToggleRight as ToggleOn
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
@@ -109,7 +112,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const localStream = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringAudio = useRef<HTMLAudioElement | null>(null);
-  const processedCandidates = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastGlobalActiveRef = useRef<number>(Date.now());
   const isInitialLoad = useRef<boolean>(true);
@@ -124,29 +126,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
       body: formData,
     });
     const json = await response.json();
-    if (json.success) {
-      return json.data.url;
-    }
+    if (json.success) return json.data.url;
     throw new Error('Upload failed');
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'chat') => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setIsUploading(true);
     try {
       const imageUrl = await uploadToImgBB(file);
-      if (type === 'logo') {
-        setLocalProfile(prev => ({ ...prev, logo: imageUrl }));
-      } else if (type === 'chat' && selectedSession) {
-        await handleSendImage(imageUrl);
-      }
-    } catch (error) {
-      alert('فشل رفع الصورة، يرجى المحاولة مرة أخرى');
-    } finally {
-      setIsUploading(false);
-    }
+      if (type === 'logo') setLocalProfile(prev => ({ ...prev, logo: imageUrl }));
+      else if (type === 'chat' && selectedSession) await handleSendImage(imageUrl);
+    } catch (error) { alert('فشل رفع الصورة'); }
+    finally { setIsUploading(false); }
   };
 
   const handleSendImage = async (imageUrl: string) => {
@@ -173,17 +166,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
   const handleEndCall = async (notify = true) => {
     const sId = activeCallSessionId;
     const cId = currentCallId;
-    
     setCallStatus('idle');
     setActiveCallSessionId(null);
     setCurrentCallId(null);
     playSystemSound(HANGUP_SOUND);
-
     if (localStream.current) { localStream.current.getTracks().forEach(t => t.stop()); localStream.current = null; }
     if (pc.current) { pc.current.close(); pc.current = null; }
     if (ringAudio.current) { ringAudio.current.pause(); ringAudio.current.currentTime = 0; }
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
-
     if (notify && sId && cId) {
       try { await sql`UPDATE voice_calls SET status = 'ended', updated_at = NOW() WHERE session_id = ${sId} AND call_id = ${cId}`; } catch (e) {}
     }
@@ -197,14 +187,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           WHERE session_id IN (SELECT id FROM chat_sessions WHERE profile_id = ${localProfile.id})
           ORDER BY updated_at DESC LIMIT 1
         `;
-
         if (calls.length > 0) {
           const call = calls[0];
           if (callStatus !== 'idle' && (call.status === 'ended' || (currentCallId && call.call_id !== currentCallId))) {
             handleEndCall(false);
             return;
           }
-
           if (call.status === 'calling' && call.caller_role === 'customer' && callStatus === 'idle') {
             setCallStatus('incoming');
             setActiveCallSessionId(call.session_id);
@@ -212,7 +200,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             if (!ringAudio.current) { ringAudio.current = new Audio(RING_SOUND); ringAudio.current.loop = true; }
             ringAudio.current.play().catch(() => {});
           }
-
           if (callStatus === 'calling' && call.status === 'connected' && call.answer && call.call_id === currentCallId) {
             if (pc.current && pc.current.signalingState === 'have-local-offer') {
               await pc.current.setRemoteDescription(new RTCSessionDescription(call.answer));
@@ -221,7 +208,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
             }
           }
         }
-      } catch (e) { console.error(e); }
+      } catch (e) {}
     };
     const timer = setInterval(monitorSignaling, 2000);
     return () => clearInterval(timer);
@@ -242,21 +229,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     setCallStatus('calling');
     try {
       await sql`INSERT INTO voice_calls (session_id, call_id, status, caller_role, updated_at) VALUES (${sessionId}, ${callId}, 'calling', 'owner', NOW()) ON CONFLICT (session_id) DO UPDATE SET call_id = ${callId}, status = 'calling', caller_role = 'owner', updated_at = NOW()`;
-      
       pc.current = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       pc.current.onicecandidate = async (event) => {
         if (event.candidate) {
           await sql`UPDATE voice_calls SET caller_candidates = caller_candidates || ${JSON.stringify([event.candidate])}::jsonb, updated_at = NOW() WHERE session_id = ${sessionId} AND call_id = ${callId}`;
         }
       };
-      
       localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStream.current.getTracks().forEach(track => pc.current?.addTrack(track, localStream.current!));
-      
       const offer = await pc.current.createOffer();
       await pc.current.setLocalDescription(offer);
       await sql`UPDATE voice_calls SET offer = ${JSON.stringify(offer)} WHERE session_id = ${sessionId} AND call_id = ${callId}`;
-      
       if (!ringAudio.current) { ringAudio.current = new Audio(RING_SOUND); ringAudio.current.loop = true; }
       ringAudio.current.play().catch(() => {});
     } catch (e) { handleEndCall(); }
@@ -271,28 +254,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           await sql`UPDATE voice_calls SET receiver_candidates = receiver_candidates || ${JSON.stringify([event.candidate])}::jsonb, updated_at = NOW() WHERE session_id = ${activeCallSessionId} AND call_id = ${currentCallId}`;
         }
       };
-      pc.current.ontrack = (event) => {
-        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = event.streams[0];
-      };
-
+      pc.current.ontrack = (event) => { if (remoteAudioRef.current) remoteAudioRef.current.srcObject = event.streams[0]; };
       const calls = await sql`SELECT offer FROM voice_calls WHERE session_id = ${activeCallSessionId} AND call_id = ${currentCallId}`;
       if (calls.length === 0 || !calls[0].offer) return;
-
       localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStream.current.getTracks().forEach(track => pc.current?.addTrack(track, localStream.current!));
-
       await pc.current.setRemoteDescription(new RTCSessionDescription(calls[0].offer));
       const answer = await pc.current.createAnswer();
       await pc.current.setLocalDescription(answer);
-      
       await sql`UPDATE voice_calls SET answer = ${JSON.stringify(answer)}, status = 'connected', updated_at = NOW() WHERE session_id = ${activeCallSessionId} AND call_id = ${currentCallId}`;
-      
       if (ringAudio.current) ringAudio.current.pause();
       setCallStatus('connected');
-    } catch (e) { 
-      console.error("Call acceptance failed", e);
-      handleEndCall(); 
-    }
+    } catch (e) { handleEndCall(); }
   };
 
   const formatDuration = (s: number) => {
@@ -332,8 +305,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     if (selectedSession) {
       const fetchMsgs = async () => {
         try {
-          const msgs = await sql`SELECT id, sender, text, timestamp, is_read FROM chat_messages WHERE session_id = ${selectedSession} ORDER BY timestamp ASC`;
-          setChatMessages(msgs.map(m => ({ ...m, timestamp: new Date(m.timestamp) })) as Message[]);
+          const msgs = await sql`SELECT id, sender, text, timestamp, is_read, is_ai FROM chat_messages WHERE session_id = ${selectedSession} ORDER BY timestamp ASC`;
+          setChatMessages(msgs.map(m => ({ ...m, timestamp: new Date(m.timestamp), isAi: m.is_ai })) as Message[]);
           await sql`UPDATE chat_messages SET is_read = TRUE WHERE session_id = ${selectedSession} AND sender = 'customer' AND is_read = FALSE`;
         } catch (e) {}
       };
@@ -368,16 +341,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
           faqs = ${JSON.stringify(localProfile.faqs || [])},
           currency = ${localProfile.currency}, 
           return_policy = ${localProfile.returnPolicy}, 
-          delivery_policy = ${localProfile.deliveryPolicy}
+          delivery_policy = ${localProfile.deliveryPolicy},
+          ai_enabled = ${localProfile.aiEnabled},
+          ai_business_info = ${localProfile.aiBusinessInfo || ''}
         WHERE id = ${localProfile.id}
       `;
       setUser({ ...user, businessProfile: { ...localProfile, slug: cleanSlug } });
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 3000);
-    } catch (e) { 
-      console.error(e);
-      alert("حدث خطأ أثناء حفظ البيانات"); 
-    } 
+    } catch (e) { alert("حدث خطأ أثناء حفظ البيانات"); } 
     finally { setIsSaving(false); }
   };
 
@@ -386,45 +358,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     const txt = replyText; setReplyText(''); playSystemSound(SEND_SOUND); 
     try {
       await sql`UPDATE chat_sessions SET last_text = ${`أنت: ${txt}`}, last_active = NOW() WHERE id = ${selectedSession}`;
-      await sql`INSERT INTO chat_messages (session_id, sender, text, is_read) VALUES (${selectedSession}, 'owner', ${txt}, TRUE)`;
-      setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'owner', text: txt, timestamp: new Date() }]);
+      await sql`INSERT INTO chat_messages (session_id, sender, text, is_read, is_ai) VALUES (${selectedSession}, 'owner', ${txt}, TRUE, FALSE)`;
+      setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'owner', text: txt, timestamp: new Date(), isAi: false }]);
     } catch (e) {}
   };
 
   const handleAddProduct = () => {
     if (!newProduct.name || !newProduct.price) return;
-    const prod: Product = {
-      id: `p_${Date.now()}`, name: newProduct.name, price: parseFloat(newProduct.price), description: '', image: newProduct.image || 'https://via.placeholder.com/150'
-    };
+    const prod: Product = { id: `p_${Date.now()}`, name: newProduct.name, price: parseFloat(newProduct.price), description: '', image: newProduct.image || 'https://via.placeholder.com/150' };
     setLocalProfile(prev => ({ ...prev, products: [...prev.products, prod] }));
     setNewProduct({ name: '', price: '', image: '' });
     setIsAddProductModalOpen(false);
   };
 
-  const removeProduct = (id: string) => {
-    setLocalProfile(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) }));
-  };
+  const removeProduct = (id: string) => { setLocalProfile(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) })); };
 
   const handleAddFAQ = () => {
     if (!newFAQ.question || !newFAQ.answer) return;
-    const faq: FAQ = {
-      id: `faq_${Date.now()}`,
-      question: newFAQ.question,
-      answer: newFAQ.answer
-    };
+    const faq: FAQ = { id: `faq_${Date.now()}`, question: newFAQ.question, answer: newFAQ.answer };
     setLocalProfile(prev => ({ ...prev, faqs: [...(prev.faqs || []), faq] }));
     setNewFAQ({ question: '', answer: '' });
   };
 
-  const removeFAQ = (id: string) => {
-    setLocalProfile(prev => ({ ...prev, faqs: (prev.faqs || []).filter(f => f.id !== id) }));
-  };
+  const removeFAQ = (id: string) => { setLocalProfile(prev => ({ ...prev, faqs: (prev.faqs || []).filter(f => f.id !== id) })); };
 
   const renderContent = () => {
     switch (activeTab) {
       case DashboardTab.OVERVIEW:
         return (
-          <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+          <div className="space-y-6 animate-in fade-in duration-500 pb-20 text-right">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard icon={<Users size={18} className="text-blue-500" />} label="زوار الصفحة" value="1,284" sub="+12%" />
               <StatCard icon={<MessageSquare size={18} className="text-green-500" />} label="محادثات" value={activeSessions.length.toString()} sub="+5%" />
@@ -507,7 +469,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/30">
                     {chatMessages.map(m => (
                       <div key={m.id} className={`flex ${m.sender==='owner'?'justify-start':'justify-end'}`}>
-                        <div className={`max-w-[80%] p-5 rounded-[28px] text-sm font-medium shadow-sm ${m.sender==='owner'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border rounded-tl-none text-gray-800'}`}>
+                        <div className={`max-w-[80%] p-5 rounded-[28px] text-sm font-medium shadow-sm relative ${m.sender==='owner'?'bg-[#0D2B4D] text-white rounded-tr-none':'bg-white border rounded-tl-none text-gray-800'}`}>
+                          {m.isAi && (
+                            <div className="flex items-center gap-1 mb-1 text-[#00D1FF] text-[8px] font-black uppercase tracking-wider">
+                              <Sparkles size={10} /> رد ذكي
+                            </div>
+                          )}
                           {m.text.startsWith('IMAGE:') ? (
                             <img src={m.text.replace('IMAGE:', '')} className="rounded-2xl max-w-full max-h-[300px] object-cover cursor-pointer hover:opacity-90" onClick={() => window.open(m.text.replace('IMAGE:', ''), '_blank')} />
                           ) : (
@@ -536,7 +503,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         );
       case DashboardTab.CATALOG:
         return (
-          <div className="space-y-6 animate-in slide-in-from-bottom-6 pb-40">
+          <div className="space-y-6 animate-in slide-in-from-bottom-6 pb-40 text-right">
             <div className="flex justify-between items-center bg-white p-8 rounded-[40px] border shadow-sm">
               <div><h3 className="text-2xl font-black text-[#0D2B4D]">كتالوج المنتجات</h3><p className="text-gray-400 font-bold mt-1 text-sm md:text-base">إدارة عرض منتجاتك لعملائك</p></div>
               <button onClick={() => setIsAddProductModalOpen(true)} className="bg-[#00D1FF] text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl shadow-cyan-500/30 hover:scale-105 transition-transform text-sm md:text-base"><Plus size={24} /> إضافة منتج</button>
@@ -554,9 +521,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   </div>
                 </div>
               ))}
-              {localProfile.products.length === 0 && (
-                <div className="col-span-full py-24 text-center text-gray-400 bg-white rounded-[40px] border border-dashed border-gray-200"><Package size={80} className="mx-auto mb-6 opacity-10" /><p className="font-black text-xl">لا توجد منتجات حتى الآن</p></div>
-              )}
             </div>
             <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
               <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الكتالوج</button>
@@ -565,7 +529,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         );
       case DashboardTab.AUTO_REPLY:
         return (
-          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40">
+          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40 text-right">
             <div className="bg-white p-10 rounded-[50px] shadow-sm border">
               <div className="flex items-center gap-5 mb-10">
                 <div className="w-16 h-16 bg-[#00D1FF]/10 rounded-3xl flex items-center justify-center text-[#00D1FF]">
@@ -581,27 +545,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-black text-gray-400 uppercase tracking-widest">السؤال المقترح</label>
-                    <input 
-                      className="w-full px-6 py-5 rounded-3xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" 
-                      placeholder="مثلاً: ما هي طرق الشحن المتوفرة؟"
-                      value={newFAQ.question}
-                      onChange={e => setNewFAQ({...newFAQ, question: e.target.value})}
-                    />
+                    <input className="w-full px-6 py-5 rounded-3xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" placeholder="مثلاً: ما هي طرق الشحن المتوفرة؟" value={newFAQ.question} onChange={e => setNewFAQ({...newFAQ, question: e.target.value})} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-black text-gray-400 uppercase tracking-widest">الإجابة الآلية الفورية</label>
-                    <input 
-                      className="w-full px-6 py-5 rounded-3xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" 
-                      placeholder="مثلاً: نشحن عبر أرامكس وسمسا خلال 3 أيام عمل."
-                      value={newFAQ.answer}
-                      onChange={e => setNewFAQ({...newFAQ, answer: e.target.value})}
-                    />
+                    <input className="w-full px-6 py-5 rounded-3xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" placeholder="مثلاً: نشحن عبر أرامكس وسمسا خلال 3 أيام عمل." value={newFAQ.answer} onChange={e => setNewFAQ({...newFAQ, answer: e.target.value})} />
                   </div>
                 </div>
-                <button 
-                  onClick={handleAddFAQ}
-                  className="w-full bg-[#0D2B4D] text-white py-5 rounded-[28px] font-black text-lg shadow-xl shadow-blue-500/10 flex items-center justify-center gap-3 hover:scale-[1.02] transition-transform"
-                >
+                <button onClick={handleAddFAQ} className="w-full bg-[#0D2B4D] text-white py-5 rounded-[28px] font-black text-lg shadow-xl shadow-blue-500/10 flex items-center justify-center gap-3 hover:scale-[1.02] transition-transform">
                   <Plus size={24} /> إضافة السؤال للقائمة
                 </button>
               </div>
@@ -614,32 +565,73 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                       <p className="font-black text-[#0D2B4D] text-lg mb-1">{faq.question}</p>
                       <p className="text-gray-500 font-bold">{faq.answer}</p>
                     </div>
-                    <button 
-                      onClick={() => removeFAQ(faq.id)}
-                      className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-colors"
-                    >
+                    <button onClick={() => removeFAQ(faq.id)} className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-colors">
                       <Trash2 size={24} />
                     </button>
                   </div>
                 ))}
-                {(!localProfile.faqs || localProfile.faqs.length === 0) && (
-                  <div className="py-20 text-center text-gray-300 border-2 border-dashed rounded-[40px] bg-gray-50/30">
-                    <Bot size={64} className="mx-auto mb-4 opacity-10" />
-                    <p className="font-black text-lg">لم تضف أي أسئلة للرد الآلي بعد</p>
-                    <p className="text-sm">ابدأ بإضافة أسئلة ليراها عملاؤك فور دخولهم</p>
-                  </div>
-                )}
               </div>
             </div>
-            
             <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
               <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الإعدادات</button>
             </div>
           </div>
         );
+      case DashboardTab.AI_SETTINGS:
+        return (
+          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40 text-right">
+            <div className="bg-white p-10 rounded-[50px] shadow-sm border overflow-hidden">
+              <div className="flex items-center justify-between mb-10">
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 bg-[#00D1FF]/10 rounded-3xl flex items-center justify-center text-[#00D1FF]">
+                    <Sparkles size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-[#0D2B4D]">الذكاء الاصطناعي (Z.AI)</h3>
+                    <p className="text-gray-400 font-bold text-sm md:text-base leading-relaxed">قم بتدريب البوت على معلومات عملك ليتولى الرد التلقائي بدلاً عنك.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setLocalProfile({...localProfile, aiEnabled: !localProfile.aiEnabled})}
+                  className={`flex items-center gap-3 px-6 py-3 rounded-full font-black transition-all ${localProfile.aiEnabled ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}
+                >
+                  {localProfile.aiEnabled ? <><ToggleOn size={24} /> مفعل</> : <><ToggleOff size={24} /> معطل</>}
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-100">
+                  <h4 className="text-[#0D2B4D] font-black mb-2 flex items-center gap-2">
+                    <Bot size={20} className="text-[#00D1FF]" /> تعليمات التدريب
+                  </h4>
+                  <p className="text-sm text-blue-800 leading-relaxed font-bold">اكتب كل تفاصيل عملك (قائمة الأسعار، سياسة التبديل، مواعيد العمل، العروض، وكيف ترحب بالعميل). البوت سيستخدم هذه المعلومات للرد بدقة.</p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest">معلومات العمل والتدريب</label>
+                  <textarea 
+                    className="w-full px-8 py-6 rounded-[40px] border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold h-80 resize-none leading-loose text-lg" 
+                    placeholder="مثال: نحن متجر بازشات لبيع الإلكترونيات. ساعات العمل من 9 صباحاً لـ 10 مساءً. نوفر توصيل مجاني للطلبات فوق 500 ريال. سياسة الاسترجاع 3 أيام..."
+                    value={localProfile.aiBusinessInfo || ''}
+                    onChange={(e) => setLocalProfile({...localProfile, aiBusinessInfo: e.target.value})}
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-8 flex items-center gap-4 p-5 bg-gray-50 rounded-[28px] border border-dashed">
+                <CheckCircle2 className="text-[#00D1FF]" size={20} />
+                <p className="text-xs font-bold text-gray-500">عند تفعيل الذكاء الاصطناعي، سيقوم البوت بسؤال العميل عن (الاسم والهاتف) أولاً ثم يبدأ الرد بناءً على المعلومات أعلاه.</p>
+              </div>
+            </div>
+            
+            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
+              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ إعدادات البوت</button>
+            </div>
+          </div>
+        );
       case DashboardTab.CUSTOMIZE:
         return (
-          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40">
+          <div className="max-w-4xl space-y-8 animate-in slide-in-from-bottom-6 pb-40 text-right">
             <div className="bg-white p-10 rounded-[50px] shadow-sm border relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-[#00D1FF]/5 rounded-full -mr-10 -mt-10 blur-3xl"></div>
                <h3 className="text-2xl font-black mb-8 text-[#0D2B4D] flex items-center gap-4"><LinkIcon className="text-[#00D1FF]" /> الرابط المخصص (Slug)</h3>
@@ -648,7 +640,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                   <input className="w-full flex-1 px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black ltr text-xl text-[#0D2B4D]" value={localProfile.slug} onChange={(e) => setLocalProfile({...localProfile, slug: e.target.value.toLowerCase().replace(/[^\w-]/g, '')})} />
                </div>
             </div>
-
             <div className="bg-white p-10 rounded-[50px] shadow-sm border">
               <h3 className="text-2xl font-black mb-10 text-[#0D2B4D] flex items-center gap-4"><Palette className="text-[#00D1FF]" /> الهوية والبيانات</h3>
               <div className="space-y-8">
@@ -665,7 +656,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <input className="w-full px-6 py-4 rounded-2xl border bg-white outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold" value={localProfile.logo} onChange={(e) => setLocalProfile({...localProfile, logo: e.target.value})} />
                   </div>
                 </div>
-
                 <div className="grid md:grid-cols-2 gap-8 text-right">
                   <div className="space-y-3">
                     <label className="text-xs font-black text-gray-400 tracking-widest uppercase">اسم المنشأة</label>
@@ -676,50 +666,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
                     <input className="w-full px-6 py-5 rounded-3xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={localProfile.ownerName} onChange={(e) => setLocalProfile({...localProfile, ownerName: e.target.value})} />
                   </div>
                 </div>
-
-                <div className="grid md:grid-cols-2 gap-8 text-right">
-                  <div className="space-y-3">
-                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">رقم الهاتف العام</label>
-                    <div className="flex items-center bg-gray-50 border rounded-3xl px-5">
-                      <Phone className="text-gray-400 shrink-0" size={20} />
-                      <input className="w-full px-4 py-5 bg-transparent outline-none font-black text-lg" value={localProfile.phone} onChange={(e) => setLocalProfile({...localProfile, phone: e.target.value})} placeholder="أدخل رقم الهاتف للعملاء" />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-xs font-black text-gray-400 tracking-widest uppercase">رابط الموقع (Google Maps)</label>
-                    <div className="flex items-center bg-gray-50 border rounded-3xl px-5">
-                      <MapPin className="text-gray-400 shrink-0" size={20} />
-                      <input className="w-full px-4 py-5 bg-transparent outline-none font-black text-lg" value={localProfile.locationUrl || ''} onChange={(e) => setLocalProfile({...localProfile, locationUrl: e.target.value})} placeholder="رابط خرائط جوجل" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-right">
-                  <label className="text-xs font-black text-gray-400 tracking-widest uppercase">روابط التواصل الاجتماعي</label>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
-                       <Instagram size={20} className="text-pink-500 shrink-0" />
-                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.instagram || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, instagram: e.target.value}})} placeholder="رابط إنستقرام" />
-                    </div>
-                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
-                       <Twitter size={20} className="text-blue-400 shrink-0" />
-                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.twitter || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, twitter: e.target.value}})} placeholder="رابط تويتر" />
-                    </div>
-                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
-                       <Facebook size={20} className="text-blue-600 shrink-0" />
-                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.facebook || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, facebook: e.target.value}})} placeholder="رابط فيسبوك" />
-                    </div>
-                    <div className="flex items-center bg-gray-50 border rounded-2xl px-4 py-2">
-                       <div className="w-5 h-5 bg-green-500 rounded flex items-center justify-center text-white font-bold text-[8px] shrink-0">W</div>
-                       <input className="w-full px-3 py-2 bg-transparent outline-none font-bold text-sm" value={localProfile.socialLinks.whatsapp || ''} onChange={(e) => setLocalProfile({...localProfile, socialLinks: {...localProfile.socialLinks, whatsapp: e.target.value}})} placeholder="رابط واتساب" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-right">
-                  <label className="text-xs font-black text-gray-400 tracking-widest uppercase">النبذة التعريفية</label>
-                  <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold h-40 resize-none leading-relaxed" value={localProfile.description || ''} onChange={(e) => setLocalProfile({...localProfile, description: e.target.value})} />
-                </div>
               </div>
             </div>
             <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
@@ -729,37 +675,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         );
       case DashboardTab.SETTINGS:
         return (
-          <div className="max-w-3xl space-y-8 animate-in slide-in-from-bottom-6 pb-40">
+          <div className="max-w-3xl space-y-8 animate-in slide-in-from-bottom-6 pb-40 text-right">
             <div className="bg-white p-10 rounded-[50px] shadow-sm border relative">
-               <h3 className="text-xl md:text-2xl font-black mb-10 text-[#0D2B4D] text-right">الإعدادات والسياسات</h3>
-               <div className="space-y-8 text-right">
+               <h3 className="text-xl md:text-2xl font-black mb-10 text-[#0D2B4D]">الإعدادات والسياسات</h3>
+               <div className="space-y-8">
                  <div className="space-y-3">
                     <label className="text-xs font-black text-gray-400 uppercase">عملة المتجر</label>
                     <select className="w-full px-6 py-5 rounded-3xl border bg-gray-50 outline-none font-black text-lg appearance-none cursor-pointer" value={localProfile.currency} onChange={(e) => setLocalProfile({...localProfile, currency: e.target.value})}>
                       <option value="SAR">SAR - ريال سعودي</option>
                       <option value="AED">AED - درهم إماراتي</option>
-                      <option value="KWD">KWD - دينار كويتي</option>
-                      <option value="EGP">EGP - جنيه مصري</option>
                       <option value="USD">USD - دولار أمريكي</option>
                     </select>
                  </div>
-                 <div className="space-y-3">
-                    <label className="text-xs font-black text-gray-400 uppercase">سياسة الاسترجاع</label>
-                    <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none font-bold h-32 leading-relaxed" value={localProfile.returnPolicy} onChange={(e) => setLocalProfile({...localProfile, returnPolicy: e.target.value})} />
-                 </div>
-                 <div className="space-y-3">
-                    <label className="text-xs font-black text-gray-400 uppercase">سياسة الشحن والتوصيل</label>
-                    <textarea className="w-full px-6 py-5 rounded-[32px] border bg-gray-50 outline-none font-bold h-32 leading-relaxed" value={localProfile.deliveryPolicy} onChange={(e) => setLocalProfile({...localProfile, deliveryPolicy: e.target.value})} />
-                 </div>
                </div>
-            </div>
-            <div className="fixed bottom-12 left-1/2 -translate-x-1/2 lg:mr-40 z-50">
-              <button onClick={saveAllChanges} disabled={isSaving} className="bg-[#0D2B4D] text-white px-14 py-5 rounded-full font-black shadow-2xl flex items-center gap-4 hover:scale-105 transition-all disabled:opacity-50">{isSaving ? <Save className="animate-spin" size={24} /> : <Save size={24} />} حفظ الإعدادات</button>
             </div>
             <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-6 rounded-[32px] font-black flex items-center justify-center gap-4 border border-red-100 hover:bg-red-100 transition-colors shadow-sm"><LogOut size={24} /> تسجيل الخروج النهائي</button>
           </div>
         );
-      default: return <div className="p-20 text-center font-black text-gray-300 animate-pulse">جاري تحميل المحتوى...</div>;
+      default: return null;
     }
   };
 
@@ -767,26 +700,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
     <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row font-tajawal text-right overflow-x-hidden">
       <audio ref={remoteAudioRef} autoPlay className="hidden" />
 
-      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
       )}
 
-      {/* Sidebar */}
       <aside className={`w-80 bg-[#0D2B4D] text-white fixed h-full flex flex-col p-10 z-[110] transition-transform duration-300 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0 shadow-2xl'}`}>
         <div className="flex items-center justify-between mb-16">
           <div className="flex items-center gap-4">
             <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-12"/>
             <span className="text-2xl font-black">بازشات</span>
           </div>
-          <button className="lg:hidden text-gray-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
-            <X size={28} />
-          </button>
+          <button className="lg:hidden text-gray-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}><X size={28} /></button>
         </div>
         <nav className="flex-1 space-y-3">
           <NavItem active={activeTab===DashboardTab.OVERVIEW} onClick={()=>{setActiveTab(DashboardTab.OVERVIEW); setIsSidebarOpen(false)}} icon={<LayoutDashboard size={22}/>} label="الرئيسية"/>
           <NavItem active={activeTab===DashboardTab.MESSAGES} onClick={()=>{setActiveTab(DashboardTab.MESSAGES); setIsSidebarOpen(false)}} icon={<MessageSquare size={22}/>} label="المحادثات" badge={totalUnread||undefined}/>
           <NavItem active={activeTab===DashboardTab.CATALOG} onClick={()=>{setActiveTab(DashboardTab.CATALOG); setIsSidebarOpen(false)}} icon={<Package size={22}/>} label="المنتجات"/>
+          <NavItem active={activeTab===DashboardTab.AI_SETTINGS} onClick={()=>{setActiveTab(DashboardTab.AI_SETTINGS); setIsSidebarOpen(false)}} icon={<Sparkles size={22}/>} label="الذكاء الاصطناعي"/>
           <NavItem active={activeTab===DashboardTab.AUTO_REPLY} onClick={()=>{setActiveTab(DashboardTab.AUTO_REPLY); setIsSidebarOpen(false)}} icon={<Bot size={22}/>} label="الرد الآلي"/>
           <NavItem active={activeTab===DashboardTab.CUSTOMIZE} onClick={()=>{setActiveTab(DashboardTab.CUSTOMIZE); setIsSidebarOpen(false)}} icon={<Palette size={22}/>} label="الهوية"/>
           <NavItem active={activeTab===DashboardTab.SETTINGS} onClick={()=>{setActiveTab(DashboardTab.SETTINGS); setIsSidebarOpen(false)}} icon={<Settings size={22}/>} label="الإعدادات"/>
@@ -796,17 +726,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </button>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 lg:mr-80 p-6 md:p-12 text-right w-full">
-        {/* Mobile Navbar */}
         <header className="lg:hidden flex items-center justify-between mb-8 bg-white p-5 rounded-[32px] border shadow-sm sticky top-4 z-40">
            <div className="flex items-center gap-3">
               <img src="https://i.ibb.co/XxVXdyhC/6.png" className="h-10"/>
               <span className="text-xl font-black text-[#0D2B4D]">بازشات</span>
            </div>
-           <button onClick={() => setIsSidebarOpen(true)} className="p-3 bg-gray-50 rounded-2xl text-[#0D2B4D] border shadow-sm">
-             <Menu size={28} />
-           </button>
+           <button onClick={() => setIsSidebarOpen(true)} className="p-3 bg-gray-50 rounded-2xl text-[#0D2B4D] border shadow-sm"><Menu size={28} /></button>
         </header>
 
         <header className="hidden lg:flex items-center justify-between mb-16">
@@ -825,72 +751,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, setUser, onLogout }) => {
         </div>
       </main>
 
-      {/* Modals & UI feedback */}
-      {isAddProductModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-[#0D2B4D]/70 backdrop-blur-md" onClick={() => setIsAddProductModalOpen(false)}></div>
-          <div className="relative bg-white w-full max-w-lg rounded-[50px] p-10 shadow-2xl text-right animate-in zoom-in-95">
-            <h3 className="text-2xl font-black mb-8 text-[#0D2B4D]">إضافة منتج جديد</h3>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">اسم المنتج</label>
-                <input type="text" className="w-full px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">السعر ({localProfile.currency})</label>
-                <input type="number" className="w-full px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-black text-lg" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">رابط صورة المنتج</label>
-                <input type="text" className="w-full px-6 py-4 rounded-2xl border bg-gray-50 outline-none focus:ring-4 focus:ring-[#00D1FF]/10 font-bold" value={newProduct.image} onChange={e => setNewProduct({...newProduct, image: e.target.value})} />
-              </div>
-            </div>
-            <div className="flex gap-4 mt-10">
-              <button onClick={handleAddProduct} className="flex-1 bg-[#00D1FF] text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-cyan-500/30">تأكيد الإضافة</button>
-              <button onClick={() => setIsAddProductModalOpen(false)} className="px-8 bg-gray-100 text-gray-500 py-5 rounded-3xl font-black">إلغاء</button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Save Toast */}
       {showSaveToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-green-500 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-3 z-[999] animate-in slide-in-from-top-12">
           <CheckCircle2 size={24} /> <span className="font-black text-lg">تم حفظ التعديلات بنجاح!</span>
-        </div>
-      )}
-
-      {callStatus !== 'idle' && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-[40px] animate-in fade-in duration-500"></div>
-          <div className="relative bg-white/10 w-full max-w-sm rounded-[60px] p-12 shadow-2xl border border-white/20 text-center text-white animate-in zoom-in-95">
-            <div className="mb-10 relative">
-              <div className="w-40 h-40 rounded-[50px] overflow-hidden mx-auto border-8 border-white/10 p-1 bg-white/5 relative z-10 shadow-2xl shadow-cyan-500/20">
-                <img src={localProfile.logo} className="w-full h-full object-cover rounded-[42px]" alt="Logo" />
-              </div>
-              {callStatus === 'connected' && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-cyan-400/40 rounded-full animate-ping"></div>}
-            </div>
-            <h3 className="text-3xl font-black mb-3">{activeSessions.find(s=>s.id===activeCallSessionId)?.customerName || 'عميل بازشات'}</h3>
-            <p className="text-cyan-400 font-black text-sm tracking-[0.2em] uppercase mb-12 flex items-center justify-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              {callStatus === 'calling' && 'جاري الاتصال...'}
-              {callStatus === 'incoming' && 'مكالمة واردة...'}
-              {callStatus === 'connected' && formatDuration(callDuration)}
-            </p>
-            <div className="flex items-center justify-center gap-8">
-              {callStatus === 'incoming' ? (
-                <>
-                  <button onClick={() => handleEndCall(true)} className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform"><PhoneOff size={32} /></button>
-                  <button onClick={handleAcceptCall} className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-2xl animate-bounce hover:scale-110 transition-transform"><PhoneCall size={32} /></button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setIsMuted(!isMuted)} className={`w-16 h-16 rounded-full flex items-center justify-center border-2 transition-all ${isMuted?'bg-white text-black':'border-white/20 hover:bg-white/10'}`}>{isMuted?<MicOff size={24}/>:<Mic size={24}/>}</button>
-                  <button onClick={() => handleEndCall(true)} className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center shadow-2xl shadow-red-500/30 hover:scale-110 transition-transform active:scale-95"><PhoneOff size={36} /></button>
-                  <button className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center border-2 border-white/20 hover:bg-white/20 transition-all"><Volume2 size={24}/></button>
-                </>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </div>

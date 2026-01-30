@@ -56,7 +56,7 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
         const bizId = `biz_${Math.random().toString(36).substr(2, 9)}`;
         const initialSlug = generateSlug(fullName); // Generate the initial slug
         
-        // Fix: Added faqs property to BusinessProfile object
+        // Fix: Added missing aiEnabled and aiBusinessInfo properties
         const initialProfile: BusinessProfile = {
           id: bizId,
           slug: initialSlug,
@@ -70,7 +70,9 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
           faqs: [],
           currency: country.code === 'SA' ? 'SAR' : 'USD',
           returnPolicy: 'الاسترجاع متاح خلال 14 يوماً من تاريخ الشراء.',
-          deliveryPolicy: 'التوصيل خلال 48 ساعة.'
+          deliveryPolicy: 'التوصيل خلال 48 ساعة.',
+          aiEnabled: false,
+          aiBusinessInfo: ''
         };
 
         // Save User
@@ -83,11 +85,11 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
         try {
           await sql`
             INSERT INTO profiles (
-              id, slug, name, owner_name, phone, country_code, logo, social_links, products, currency, return_policy, delivery_policy
+              id, slug, name, owner_name, phone, country_code, logo, social_links, products, currency, return_policy, delivery_policy, ai_enabled, ai_business_info
             ) VALUES (
               ${bizId}, ${initialSlug}, ${initialProfile.name}, ${initialProfile.ownerName}, ${fullPhone}, ${country.code}, 
               ${initialProfile.logo}, ${JSON.stringify(initialProfile.socialLinks)}, ${JSON.stringify(initialProfile.products)},
-              ${initialProfile.currency}, ${initialProfile.returnPolicy}, ${initialProfile.deliveryPolicy}
+              ${initialProfile.currency}, ${initialProfile.returnPolicy}, ${initialProfile.deliveryPolicy}, false, ''
             )
           `;
         } catch (slugError) {
@@ -95,11 +97,11 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
           const finalSlug = `${initialSlug}-${Math.random().toString(36).substr(2, 3)}`;
           await sql`
             INSERT INTO profiles (
-              id, slug, name, owner_name, phone, country_code, logo, social_links, products, currency, return_policy, delivery_policy
+              id, slug, name, owner_name, phone, country_code, logo, social_links, products, currency, return_policy, delivery_policy, ai_enabled, ai_business_info
             ) VALUES (
               ${bizId}, ${finalSlug}, ${initialProfile.name}, ${initialProfile.ownerName}, ${fullPhone}, ${country.code}, 
               ${initialProfile.logo}, ${JSON.stringify(initialProfile.socialLinks)}, ${JSON.stringify(initialProfile.products)},
-              ${initialProfile.currency}, ${initialProfile.returnPolicy}, ${initialProfile.deliveryPolicy}
+              ${initialProfile.currency}, ${initialProfile.returnPolicy}, ${initialProfile.deliveryPolicy}, false, ''
             )
           `;
           initialProfile.slug = finalSlug;
@@ -116,7 +118,7 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
           const profRows = await sql`SELECT * FROM profiles WHERE id = ${u.business_id}`;
           const p = profRows[0];
           
-          // Fix: Added faqs property to BusinessProfile object
+          // Fix: Added missing aiEnabled and aiBusinessInfo properties
           const profile: BusinessProfile = {
             id: p.id,
             slug: p.slug || p.id,
@@ -130,7 +132,9 @@ const Auth: React.FC<AuthProps> = ({ type, onAuth, onToggle }) => {
             faqs: p.faqs || [],
             currency: p.currency,
             returnPolicy: p.return_policy,
-            deliveryPolicy: p.delivery_policy
+            deliveryPolicy: p.delivery_policy,
+            aiEnabled: !!p.ai_enabled,
+            aiBusinessInfo: p.ai_business_info || ''
           };
 
           onAuth({ id: u.id, phone: u.phone, businessProfile: profile });

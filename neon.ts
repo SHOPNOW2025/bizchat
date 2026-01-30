@@ -32,25 +32,19 @@ export const initTables = async () => {
         faqs JSONB DEFAULT '[]',
         currency TEXT,
         return_policy TEXT,
-        delivery_policy TEXT
+        delivery_policy TEXT,
+        ai_enabled BOOLEAN DEFAULT FALSE,
+        ai_business_info TEXT
       )
     `;
 
-    try {
-      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`;
-    } catch (e) {}
-    
-    try {
-      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`;
-    } catch (e) {}
-
-    try {
-      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS faqs JSONB DEFAULT '[]'`;
-    } catch (e) {}
-
-    try {
-      await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS location_url TEXT`;
-    } catch (e) {}
+    // Migration updates
+    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`; } catch (e) {}
+    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meta_description TEXT`; } catch (e) {}
+    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS faqs JSONB DEFAULT '[]'`; } catch (e) {}
+    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS location_url TEXT`; } catch (e) {}
+    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT FALSE`; } catch (e) {}
+    try { await sql`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_business_info TEXT`; } catch (e) {}
     
     await sql`
       CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -70,9 +64,12 @@ export const initTables = async () => {
         sender TEXT NOT NULL,
         text TEXT NOT NULL,
         is_read BOOLEAN DEFAULT FALSE,
+        is_ai BOOLEAN DEFAULT FALSE,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
+
+    try { await sql`ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_ai BOOLEAN DEFAULT FALSE`; } catch (e) {}
 
     await sql`
       CREATE TABLE IF NOT EXISTS voice_calls (

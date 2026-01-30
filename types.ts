@@ -12,6 +12,7 @@ export enum DashboardTab {
   MESSAGES = 'MESSAGES',
   CATALOG = 'CATALOG',
   AUTO_REPLY = 'AUTO_REPLY',
+  AI_SETTINGS = 'AI_SETTINGS',
   CUSTOMIZE = 'CUSTOMIZE',
   SETTINGS = 'SETTINGS'
 }
@@ -54,6 +55,8 @@ export interface BusinessProfile {
   currency: string;
   returnPolicy: string;
   deliveryPolicy: string;
+  aiEnabled: boolean;
+  aiBusinessInfo: string;
 }
 
 export interface Message {
@@ -61,6 +64,7 @@ export interface Message {
   sender: 'customer' | 'owner';
   text: string;
   timestamp: Date;
+  isAi?: boolean;
 }
 
 export interface User {
