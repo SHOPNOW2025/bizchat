@@ -66,52 +66,61 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     initSession();
   }, [profile.id]);
 
-  // استخدام Google Gemini AI للرد
   const callGeminiAI = async (userMessage: string, history: Message[]) => {
     try {
+      //初始化 Gemini API
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
-      // تجهيز بيانات المنتجات لتضمينها في سياق المحادثة
       const productsList = profile.products.map(p => `- ${p.name}: ${p.price} ${profile.currency}`).join('\n');
       
       const systemInstruction = `
-        أنت مساعد ذكي وموظف مبيعات محترف لمتجر "${profile.name}".
+        أنت المساعد الذكي والموظف الافتراضي الرسمي لمتجر "${profile.name}".
         صاحب المتجر هو: ${profile.ownerName}.
         
-        معلومات المتجر التي يجب عليك الالتزام بها:
-        ${profile.aiBusinessInfo || profile.description || 'متجر بازشات المتميز'}
+        معلومات المتجر الأساسية:
+        ${profile.aiBusinessInfo || profile.description || 'متجر يقدم أفضل الخدمات والمنتجات.'}
         
-        قائمة المنتجات المتوفرة:
-        ${productsList || 'تواصل مع الإدارة لمعرفة المنتجات'}
+        قائمة المنتجات والأسعار الحالية:
+        ${productsList || 'يرجى مراجعة الكتالوج للحصول على أحدث الأسعار.'}
         
-        بيانات العميل الحالي:
-        الاسم: ${customerData.name}
-        الهاتف: ${customerData.phone}
+        بيانات العميل الذي تتحدث معه الآن:
+        - الاسم: ${customerData.name}
+        - الهاتف: ${customerData.phone}
         
-        تعليمات الرد:
-        1. رد دائماً باللغة العربية بأسلوب ودود ومحترف.
-        2. استخدم معلومات المتجر والمنتجات المذكورة أعلاه فقط للإجابة.
-        3. إذا طلب العميل منتجاً غير موجود، اعتذر بلباقة واقترح المتاح.
-        4. إذا أراد العميل الطلب، أكد له أن بياناته (الاسم والهاتف) مسجلة وسيقوم صاحب المتجر بالتواصل معه.
-        5. كن مختصراً ومفيداً في ردودك.
+        تعليمات صارمة للرد:
+        1. اللغة: العربية بلهجة مهذبة وودودة.
+        2. المصدر: استخدم المعلومات المذكورة أعلاه فقط. لا تخمن معلومات عن الأسعار أو التوصيل إذا لم تكن مذكورة.
+        3. الهدف: ساعد العميل في اختيار المنتجات وحثه على الشراء.
+        4. الطلبات: إذا طلب العميل منتجاً، أخبره أنك سجلت طلبه وأن صاحب المتجر سيتواصل معه على رقمه (${customerData.phone}).
+        5. الخصوصية: لا تذكر أي تفاصيل تقنية عن كيفية عملك كذكاء اصطناعي.
       `;
+
+      // تحويل تاريخ المحادثة للصيغة التي يفهمها Gemini
+      const contents = history.slice(-6).map(m => ({
+        role: m.sender === 'customer' ? 'user' : 'model',
+        parts: [{ text: m.text }]
+      }));
+
+      // إضافة الرسالة الحالية
+      contents.push({
+        role: 'user',
+        parts: [{ text: userMessage }]
+      });
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: [
-          { role: 'user', parts: [{ text: `النظام: ${systemInstruction}\n\nتاريخ المحادثة:\n${history.slice(-5).map(m => `${m.sender === 'customer' ? 'العميل' : 'المتجر'}: ${m.text}`).join('\n')}\n\nالعميل: ${userMessage}` }] }
-        ],
+        contents: contents,
         config: {
-          temperature: 0.7,
-          topP: 0.8,
-          topK: 40,
+          systemInstruction: systemInstruction,
+          temperature: 0.8,
+          topP: 0.95,
         }
       });
 
-      return response.text || "أعتذر، لم أستطع معالجة طلبك الآن. سأخبر صاحب المتجر بالرد عليك.";
+      return response.text || "أعتذر، لم أستطع صياغة رد مناسب حالياً. كيف يمكنني مساعدتك بطريقة أخرى؟";
     } catch (e) {
-      console.error("Gemini AI Error:", e);
-      return "عذراً، أواجه ضغطاً في الطلبات حالياً. سيقوم فريق العمل بالرد عليك قريباً.";
+      console.error("Gemini API Error:", e);
+      return "أهلاً بك! سيقوم صاحب المتجر بالرد عليك قريباً للإجابة على استفسارك بدقة.";
     }
   };
 
@@ -119,7 +128,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     setIsBotThinking(true);
     await new Promise(resolve => setTimeout(resolve, 800));
     setIsBotThinking(false);
-    let text = step === 'name' ? "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟" : `تشرفنا بك يا ${customerData.name}! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك بشكل أفضل.`;
+    let text = step === 'name' ? "أهلاً بك في متجرنا! ما هو اسمك الكريم لنتمكن من خدمتك؟" : `تشرفنا بك يا ${customerData.name}! فضلاً، ما هو رقم هاتفك لمتابعة طلباتك؟`;
     setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() }]);
   };
 
@@ -131,7 +140,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       } catch (e) {}
     };
     fetchMsgs();
-    const interval = setInterval(fetchMsgs, 5000);
+    const interval = setInterval(fetchMsgs, 4000);
     return () => clearInterval(interval);
   }, [profile.id]);
 
@@ -165,15 +174,14 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         setTimeout(async () => {
           setIsBotThinking(false);
           const confirmText = profile.aiEnabled 
-            ? `شكراً لك! أنا المساعد الذكي لمتجر ${profile.name}، كيف يمكنني خدمتك اليوم؟ يمكنك سؤالي عن المنتجات أو الأسعار.` 
-            : "شكراً لك! تم حفظ بياناتك بنجاح. سيقوم صاحب المتجر بالرد عليك قريباً.";
+            ? `أهلاً بك يا ${customerData.name}، أنا المساعد الذكي لمتجر ${profile.name}. كيف يمكنني مساعدتك اليوم؟` 
+            : "شكراً لك! تم استلام بياناتك بنجاح. كيف يمكنني مساعدتك؟";
           await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'owner', ${confirmText})`;
           setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text: confirmText, timestamp: new Date() }]);
         }, 1000);
         return;
       }
 
-      // إرسال رسالة المستخدم
       await sql`UPDATE chat_sessions SET last_text = ${txt.substring(0, 50)}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
       await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
       
@@ -181,7 +189,6 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       const updatedHistory = [...messages, userMsgObj];
       setMessages(updatedHistory);
 
-      // تفعيل الذكاء الاصطناعي إذا كان مفعلاً في الملف الشخصي
       if (profile.aiEnabled && !txt.startsWith('IMAGE:')) {
         setIsBotThinking(true);
         const aiResponse = await callGeminiAI(txt, updatedHistory);
@@ -223,7 +230,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
             <h1 className="font-black text-base text-[#0D2B4D] truncate">{profile.name}</h1>
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">نشط الآن</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">متصل</span>
             </div>
           </div>
         </div>
@@ -247,9 +254,9 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         {isBotThinking && (
           <div className="flex justify-start">
             <div className="bg-white border p-4 rounded-3xl flex gap-1.5 shadow-sm">
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-150"></div>
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-300"></div>
+              <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce delay-150"></div>
+              <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce delay-300"></div>
             </div>
           </div>
         )}
