@@ -61,11 +61,10 @@ const App: React.FC = () => {
 
   const loadPublicProfile = async (identifier: string) => {
     try {
-      // البحث باستخدام الـ ID أو الـ Slug
       const rows = await sql`SELECT * FROM profiles WHERE id = ${identifier} OR slug = ${identifier}`;
       if (rows.length > 0) {
         const p = rows[0];
-        // Fix: Added faqs property to match BusinessProfile interface
+        // تم تحديث جلب البيانات هنا لضمان عمل الذكاء الاصطناعي
         setPublicProfile({
           id: p.id,
           slug: p.slug || p.id,
@@ -81,7 +80,9 @@ const App: React.FC = () => {
           faqs: p.faqs || [],
           currency: p.currency,
           returnPolicy: p.return_policy,
-          deliveryPolicy: p.delivery_policy
+          deliveryPolicy: p.delivery_policy,
+          aiEnabled: !!p.ai_enabled, // تأكيد تحويلها لقيمة منطقية
+          aiBusinessInfo: p.ai_business_info || ''
         });
       } else {
         setPublicProfile(null);

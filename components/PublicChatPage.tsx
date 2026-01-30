@@ -107,12 +107,15 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           role: "system", 
           content: `You are an AI assistant for a business named "${profile.name}". 
           Owned by: ${profile.ownerName}.
-          Business Info: ${profile.aiBusinessInfo || profile.description}.
-          Customer Name: ${customerData.name}.
-          Customer Phone: ${customerData.phone}.
-          Context: You are helping the customer. Answer in the same language as the customer (mostly Arabic). Be professional and helpful. If they want to order, take their details.`
+          Business Training Info: ${profile.aiBusinessInfo || profile.description || 'No detailed info provided'}.
+          Customer Details: Name: ${customerData.name}, Phone: ${customerData.phone}.
+          Instructions: 
+          1. Answer in the same language as the customer (predominantly Arabic). 
+          2. Be professional, friendly, and expert in the business details.
+          3. If the customer wants to order something, ask for details and confirm.
+          4. If you don't know an answer based on the training info, ask them to wait for the owner's response.`
         },
-        ...history.slice(-10).map(m => ({
+        ...history.slice(-8).map(m => ({
           role: m.sender === 'customer' ? 'user' : 'assistant',
           content: m.text
         })),
@@ -127,15 +130,19 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         },
         body: JSON.stringify({
           model: "glm-4.7",
-          messages: messagesPayload
+          messages: messagesPayload,
+          temperature: 0.7
         })
       });
 
       const data = await response.json();
-      return data.choices[0].message.content;
+      if (data.choices && data.choices.length > 0) {
+        return data.choices[0].message.content;
+      }
+      return "عذراً، لم أستطع فهم ذلك بشكل صحيح. هل يمكنك التوضيح؟";
     } catch (e) {
       console.error("ZAI Error", e);
-      return "عذراً، حدث خطأ في معالجة طلبك حالياً.";
+      return "عذراً، أواجه مشكلة تقنية في الرد حالياً. سيقوم صاحب المتجر بالرد عليك قريباً.";
     }
   };
 
@@ -170,7 +177,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       } catch (e) {}
     };
     fetchMsgs();
-    const interval = setInterval(fetchMsgs, 3000);
+    const interval = setInterval(fetchMsgs, 4000);
     return () => clearInterval(interval);
   }, [profile.id]);
 
@@ -209,20 +216,29 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         return;
       }
 
-      const lastText = txt.startsWith('IMAGE:') ? 'صورة' : txt;
-      await sql`UPDATE chat_sessions SET last_text = ${lastText}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
+      // إرسال رسالة العميل
+      const lastTextShow = txt.startsWith('IMAGE:') ? 'صورة' : txt;
+      await sql`UPDATE chat_sessions SET last_text = ${lastTextShow}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
       await sql`INSERT INTO chat_messages (session_id, sender, text) VALUES (${chatSessionId.current}, 'customer', ${txt})`;
-      const newHistory = [...messages, { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() } as Message];
-      setMessages(newHistory);
+      
+      const userMsgObj: Message = { id: `m_${Date.now()}`, sender: 'customer', text: txt, timestamp: new Date() };
+      const updatedHistory = [...messages, userMsgObj];
+      setMessages(updatedHistory);
 
-      if (profile.aiEnabled) {
+      // الرد بالذكاء الاصطناعي إذا كان مفعلاً
+      if (profile.aiEnabled && !txt.startsWith('IMAGE:')) {
         setIsBotThinking(true);
-        const aiResponse = await callZAI(txt, newHistory);
+        const aiResponse = await callZAI(txt, updatedHistory);
         setIsBotThinking(false);
+        
         await sql`INSERT INTO chat_messages (session_id, sender, text, is_ai) VALUES (${chatSessionId.current}, 'owner', ${aiResponse}, TRUE)`;
+        await sql`UPDATE chat_sessions SET last_text = ${aiResponse.substring(0, 30)}, last_active = NOW() WHERE id = ${chatSessionId.current}`;
+        
         setMessages(prev => [...prev, { id: `ai_${Date.now()}`, sender: 'owner', text: aiResponse, timestamp: new Date(), isAi: true }]);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Send error:", e);
+    }
   };
 
   const handleFAQClick = async (faq: FAQ) => {
