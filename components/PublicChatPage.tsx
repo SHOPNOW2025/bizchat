@@ -1,14 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { BusinessProfile, Message, FAQ } from '../types';
+import { BusinessProfile, Message } from '../types';
 import { sql } from '../neon';
+import { GoogleGenAI } from "@google/genai";
 import { 
   Send, 
   ShoppingBag, 
-  Bot, 
   X, 
   MessageCircle, 
-  Package, 
   ShieldCheck, 
   Camera, 
   Loader2, 
@@ -21,7 +20,6 @@ interface PublicChatPageProps {
 
 const IMGBB_API_KEY = 'a16fdd9aead1214d64e435c9b83a0c2e';
 const SEND_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3';
-const OPENROUTER_API_KEY = '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';
 
 const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -68,55 +66,47 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
 
   const callAI = async (userMessage: string, history: Message[]) => {
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const productsList = profile.products.map(p => `- ${p.name}: ${p.price} ${profile.currency}`).join('\n');
       
       const systemInstruction = `
         أنت المساعد الذكي "باز بوت" لمتجر "${profile.name}".
         صاحب المتجر هو: ${profile.ownerName}.
         
-        معلومات المتجر:
+        معلومات المتجر الأساسية:
         ${profile.aiBusinessInfo || profile.description || 'متجر بازشات المتميز'}
         
-        المنتجات المتاحة:
-        ${productsList || 'تواصل معنا لمعرفة المتاح'}
+        كتالوج المنتجات الحالية:
+        ${productsList || 'يرجى التواصل معنا للاستفسار عن المنتجات'}
         
-        بيانات العميل الحالي:
-        الاسم: ${customerData.name}
-        الهاتف: ${customerData.phone}
+        بيانات العميل الذي تتحدث معه الآن:
+        - الاسم: ${customerData.name}
+        - الهاتف: ${customerData.phone}
         
-        قواعد الرد:
-        1. رد دائماً باللغة العربية بأسلوب ودود ومحفز للشراء.
-        2. استخدم المعلومات أعلاه فقط للإجابة.
-        3. إذا طلب العميل منتجاً، أكد له أنك سجلت الطلب وسيتم التواصل معه على رقمه المذكور.
-        4. لا تذكر أنك ذكاء اصطناعي إلا إذا سُئلت، وتصرف كموظف خدمة عملاء بشري.
+        مهامك وقواعد الرد:
+        1. اللغة: الرد دائماً باللغة العربية بأسلوب مهذب، محترف، وودود جداً.
+        2. المصداقية: اعتمد فقط على المعلومات المذكورة أعلاه. لا تعطِ وعوداً أو أسعاراً غير موجودة.
+        3. الهدف: شجع العميل على الشراء وساعده في اختيار المنتج المناسب.
+        4. الطلبات: إذا أبدى العميل رغبة في شراء منتج، أخبره أنك سجلت اهتمامه وأن صاحب المتجر سيتواصل معه على رقمه المعتمد (${customerData.phone}).
+        5. الخصوصية: لا تتحدث عن تقنيات الذكاء الاصطناعي، أنت موظف خدمة عملاء رسمي للمنشأة.
       `;
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "HTTP-Referer": window.location.origin,
-          "X-Title": "Bazchat Platform",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "arcee-ai/trinity-large-preview:free",
-          messages: [
-            { role: "system", content: systemInstruction },
-            ...history.slice(-6).map(m => ({
-              role: m.sender === 'customer' ? 'user' : 'assistant',
-              content: m.text
-            })),
-            { role: "user", content: userMessage }
-          ]
-        })
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: history.slice(-10).map(m => ({
+          role: m.sender === 'customer' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        })).concat([{ role: 'user', parts: [{ text: userMessage }] }]),
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.7,
+        }
       });
 
-      const data = await response.json();
-      return data.choices?.[0]?.message?.content || "أعتذر، حدث خطأ بسيط في معالجة طلبك. كيف يمكنني مساعدتك؟";
+      return response.text || "أعتذر، لم أتمكن من معالجة الرد حالياً. كيف يمكنني مساعدتك بشكل آخر؟";
     } catch (e) {
       console.error("AI connection failed:", e);
-      return "عذراً، أواجه ضغطاً في الطلبات حالياً. سيقوم صاحب المتجر بالرد عليك قريباً.";
+      return "أهلاً بك! سيقوم صاحب المتجر بالرد عليك قريباً للإجابة على استفسارك بدقة.";
     }
   };
 
@@ -124,7 +114,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
     setIsBotThinking(true);
     await new Promise(resolve => setTimeout(resolve, 800));
     setIsBotThinking(false);
-    let text = step === 'name' ? "أهلاً بك! قبل أن نبدأ، ما هو اسمك الكريم؟" : `تشرفنا بك يا ${customerData.name}! لطفاً زودنا برقم هاتفك لنتمكن من متابعة طلبك بشكل أفضل.`;
+    let text = step === 'name' ? "أهلاً بك في متجرنا! ما هو اسمك الكريم لنبدأ خدمتك؟" : `تشرفنا بك يا ${customerData.name}! فضلاً، زودنا برقم هاتفك لنتمكن من متابعة طلباتك.`;
     setMessages(prev => [...prev, { id: `bot_${Date.now()}`, sender: 'owner', text, timestamp: new Date() }]);
   };
 
@@ -195,7 +185,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
       }
     } catch (e) {
       console.error("Error sending message:", e);
-      setIsBotThinking(false); // تأكيد إغلاق حالة التحميل في حال الخطأ
+      setIsBotThinking(false);
     }
   };
 
@@ -237,7 +227,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           <div key={m.id || idx} className={`flex ${m.sender === 'customer' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
             <div className={`max-w-[85%] p-5 rounded-[28px] text-sm font-bold shadow-sm relative ${
               m.sender === 'customer' 
-                ? 'bg-[#0D2B4D] text-white rounded-tr-none' 
+                ? 'bg-[#0D2B4D] text-white rounded-tr-none shadow-lg shadow-blue-900/10' 
                 : 'bg-white border border-gray-100 rounded-tl-none text-gray-800'
             }`}>
               {m.isAi && <div className="flex items-center gap-1 mb-2 text-[#00D1FF] text-[8px] font-black uppercase tracking-wider"><Sparkles size={10} /> رد ذكي ✨</div>}
@@ -251,12 +241,12 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
           </div>
         ))}
         {isBotThinking && (
-          <div className="flex justify-start animate-pulse">
+          <div className="flex justify-start">
             <div className="bg-white border p-4 rounded-3xl rounded-tl-none flex gap-2 items-center shadow-sm">
               <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce"></div>
               <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce delay-150"></div>
               <div className="w-2 h-2 bg-[#00D1FF] rounded-full animate-bounce delay-300"></div>
-              <span className="text-xs text-gray-400 font-bold mr-2">جاري الرد...</span>
+              <span className="text-xs text-gray-400 font-bold mr-2">باز بوت يفكر...</span>
             </div>
           </div>
         )}
@@ -274,13 +264,13 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
             value={inputValue} 
             onChange={e=>setInputValue(e.target.value)} 
             onKeyPress={e=>e.key==='Enter'&&handleSend()} 
-            placeholder={onboardingStep === 'name' ? 'ما هو اسمك؟' : onboardingStep === 'phone' ? 'ما هو رقم هاتفك؟' : "اكتب استفسارك هنا..."} 
+            placeholder={onboardingStep === 'name' ? 'أدخل اسمك هنا...' : onboardingStep === 'phone' ? 'أدخل رقم هاتفك...' : "اكتب استفسارك هنا..."} 
             className="w-full px-5 py-3.5 rounded-[22px] bg-gray-50 border-2 border-transparent outline-none text-right font-bold text-sm focus:border-[#00D1FF]/20 focus:bg-white transition-all shadow-inner" 
           />
           <button 
             onClick={() => handleSend()} 
             disabled={!inputValue.trim() || isBotThinking || isUploading} 
-            className="w-12 h-12 bg-[#00D1FF] text-white rounded-2xl flex items-center justify-center shadow-lg disabled:opacity-50 active:scale-90 transition-all shrink-0"
+            className="w-12 h-12 bg-[#0D2B4D] text-white rounded-2xl flex items-center justify-center shadow-lg disabled:opacity-50 active:scale-90 transition-all shrink-0"
           >
             <Send size={22} className="-rotate-45" />
           </button>
@@ -288,7 +278,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
         <div className="flex justify-center mt-3">
           <div className="flex items-center gap-1.5 text-gray-300 text-[8px] font-black tracking-widest uppercase">
             <ShieldCheck size={10} className="text-green-500" />
-            <span>مدعوم بواسطة بازشات - Trinity AI</span>
+            <span>مدعوم بواسطة بازشات - محادثة آمنة</span>
           </div>
         </div>
       </footer>
@@ -310,7 +300,7 @@ const PublicChatPage: React.FC<PublicChatPageProps> = ({ profile }) => {
                      <div className="flex items-center justify-between">
                         <p className="text-[#00D1FF] font-black text-xs">{p.price} {profile.currency}</p>
                         <button 
-                          onClick={() => { handleSend(`أرغب في طلب: ${p.name}`); setShowCatalog(false); }}
+                          onClick={() => { handleSend(`أرغب في الاستفسار عن: ${p.name}`); setShowCatalog(false); }}
                           className="p-2 bg-[#0D2B4D] text-white rounded-lg hover:scale-105 transition-transform"
                         >
                           <MessageCircle size={14}/>
